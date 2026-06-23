@@ -90,6 +90,21 @@ ipcMain.handle('fs:rename', async (_e, oldPath, newName) => {
   return target
 })
 
+// Move a file/folder into another directory (drag & drop in the tree).
+ipcMain.handle('fs:move', async (_e, src, destDir) => {
+  const target = join(destDir, basename(src))
+  if (join(src) === join(target)) return { ok: false, reason: 'same' }
+  if (dirname(src) === destDir) return { ok: false, reason: 'same-dir' }
+  try {
+    await stat(target)
+    return { ok: false, reason: 'exists' } // refuse to clobber an existing entry
+  } catch {
+    /* target does not exist — good */
+  }
+  await rename(src, target)
+  return { ok: true, newPath: target }
+})
+
 // Soft-delete to the OS recycle bin rather than permanent removal.
 ipcMain.handle('fs:delete', async (_e, p) => {
   await shell.trashItem(p)

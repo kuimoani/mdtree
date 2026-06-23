@@ -2,6 +2,13 @@
 // confirms, and right-click context menus. Electron disables window.prompt/confirm,
 // so we roll our own dark-themed versions returning promises.
 
+// Broadcast that the contents of one or more directories changed, so the tree
+// nodes for those directories reload. Uses a window event bus because tree nodes
+// live in nested shadow roots that a normal querySelector can't reach.
+export function notifyFsChange(dirs) {
+  window.dispatchEvent(new CustomEvent('mdtree-fs', { detail: { dirs } }))
+}
+
 const STYLE_ID = 'mdtree-ui-styles'
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return

@@ -1,5 +1,10 @@
 import { LitElement, html, css } from 'lit'
-import { promptText, showContextMenu } from './ui.js'
+import { promptText, showContextMenu, notifyFsChange } from './ui.js'
+
+const DRAG_TYPE = 'application/x-mdtree-path'
+const sepOf = (p) => (p.includes('\\') ? '\\' : '/')
+const parentDir = (p) => p.replace(/[\\/][^\\/]*$/, '')
+const isDescendant = (child, anc) => child === anc || child.startsWith(anc + sepOf(anc))
 
 // Left panel: collapsible multi-root workspaces + lazy folder trees + global search.
 export class MdSidebar extends LitElement {
@@ -116,6 +121,16 @@ export class MdSidebar extends LitElement {
     .root-head.dragover { border-top: 2px solid #0e639c; }
     .root-head .twisty { width: 12px; text-align: center; color: #888; font-size: 10px; }
     .root-head .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .newdoc {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0 2px;
+      opacity: 0.8;
+    }
+    .newdoc:hover { opacity: 1; }
     .remove {
       background: none;
       border: none;
@@ -157,11 +172,11 @@ export class MdSidebar extends LitElement {
     this._collapsed = next
   }
 
-  // ---- root context menu (create at root) ----
+  // ---- context menus (create at root) ----
   _rootMenu(root, e) {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, [
-      { label: '새 파일', action: () => this._createAtRoot(root, 'file') },
+      { label: '새 문서', action: () => this._createAtRoot(root, 'file') },
       { label: '새 폴더', action: () => this._createAtRoot(root, 'folder') },
       { sep: true },
       {
@@ -175,35 +190,66 @@ export class MdSidebar extends LitElement {
     ])
   }
 
+  // Right-click on the empty area of a root's body.
+  _rootBodyMenu(root, e) {
+    e.preventDefault()
+    showContextMenu(e.clientX, e.clientY, [
+      { label: '새 문서', action: () => this._createAtRoot(root, 'file') },
+      { label: '새 폴더', action: () => this._createAtRoot(root, 'folder') },
+    ])
+  }
+
   async _createAtRoot(root, kind) {
     const name = await promptText(
-      kind === 'file' ? '새 파일 이름' : '새 폴더 이름',
+      kind === 'file' ? '새 문서 이름' : '새 폴더 이름',
       kind === 'file' ? 'untitled.md' : 'new-folder'
     )
     if (!name) return
     try {
+      // Make sure the root is expanded so the new entry is visible.
+      this._collapsed = new Set([...this._collapsed].filter((p) => p !== root.path))
       if (kind === 'file') {
         const full = await window.api.createFile(root.path, name)
+        notifyFsChange([root.path])
         this.dispatchEvent(
           new CustomEvent('open-file', { detail: { path: full }, bubbles: true, composed: true })
         )
       } else {
         await window.api.createFolder(root.path, name)
+        notifyFsChange([root.path])
       }
-      this._collapsed = new Set([...this._collapsed].filter((p) => p !== root.path))
-      this._reloadRoot(root.path)
     } catch (err) {
       console.error(err)
     }
   }
 
-  _reloadRoot(path) {
-    this.updateComplete.then(() => {
-      const node = [...this.renderRoot.querySelectorAll('md-tree-item')].find(
-        (n) => n.path === path
+  // ---- drop a tree entry onto a root's body to move it to the root ----
+  _onRootDragOver(e) {
+    if (![...e.dataTransfer.types].includes(DRAG_TYPE)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  async _onRootDrop(root, e) {
+    const src = e.dataTransfer.getData(DRAG_TYPE)
+    if (!src) return // external (OS) drop — let the window handler add a workspace
+    e.preventDefault()
+    e.stopPropagation()
+    if (isDescendant(root.path, src) || parentDir(src) === root.path) return
+    try {
+      const res = await window.api.move(src, root.path)
+      if (!res?.ok) return
+      this.dispatchEvent(
+        new CustomEvent('file-renamed', {
+          detail: { oldPath: src, newPath: res.newPath, isDir: false },
+          bubbles: true,
+          composed: true,
+        })
       )
-      node?._reload?.()
-    })
+      notifyFsChange([parentDir(src), root.path])
+    } catch (err) {
+      console.error('move failed', err)
+    }
   }
 
   // ---- search ----
@@ -305,6 +351,16 @@ export class MdSidebar extends LitElement {
                   <span class="twisty">${collapsed ? '▸' : '▾'}</span>
                   <span class="label">${w.name}</span>
                   <button
+                    class="newdoc"
+                    title="새 문서"
+                    @click=${(e) => {
+                      e.stopPropagation()
+                      this._createAtRoot(w, 'file')
+                    }}
+                  >
+                    📝
+                  </button>
+                  <button
                     class="remove"
                     title="제거"
                     @click=${(e) => {
@@ -319,7 +375,12 @@ export class MdSidebar extends LitElement {
                 </div>
                 ${collapsed
                   ? ''
-                  : html`<div class="root-body">
+                  : html`<div
+                      class="root-body"
+                      @contextmenu=${(e) => this._rootBodyMenu(w, e)}
+                      @dragover=${this._onRootDragOver}
+                      @drop=${(e) => this._onRootDrop(w, e)}
+                    >
                       <md-tree-item
                         .path=${w.path}
                         .name=${w.name}
