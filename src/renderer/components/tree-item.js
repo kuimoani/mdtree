@@ -111,23 +111,23 @@ export class MdTreeItem extends LitElement {
     e.stopPropagation()
     const items = this.isDir
       ? [
-          { label: '새 문서', action: () => this._newFile() },
-          { label: '새 폴더', action: () => this._newFolder() },
+          { label: 'New Document', action: () => this._newFile() },
+          { label: 'New Folder', action: () => this._newFolder() },
           { sep: true },
-          { label: '이름 변경', action: () => this._rename() },
-          { label: '삭제', danger: true, action: () => this._delete() },
+          { label: 'Rename', action: () => this._rename() },
+          { label: 'Delete', danger: true, action: () => this._delete() },
         ]
       : [
-          { label: '열기', action: () => this._open() },
+          { label: 'Open', action: () => this._open() },
           { sep: true },
-          { label: '이름 변경', action: () => this._rename() },
-          { label: '삭제', danger: true, action: () => this._delete() },
+          { label: 'Rename', action: () => this._rename() },
+          { label: 'Delete', danger: true, action: () => this._delete() },
         ]
     showContextMenu(e.clientX, e.clientY, items)
   }
 
   async _newFile() {
-    const name = await promptText('새 문서 이름', 'untitled.md')
+    const name = await promptText('New document name', 'untitled.md')
     if (!name) return
     try {
       const full = await window.api.createFile(this.path, name)
@@ -142,7 +142,7 @@ export class MdTreeItem extends LitElement {
   }
 
   async _newFolder() {
-    const name = await promptText('새 폴더 이름', 'new-folder')
+    const name = await promptText('New folder name', 'new-folder')
     if (!name) return
     try {
       await window.api.createFolder(this.path, name)
@@ -154,7 +154,7 @@ export class MdTreeItem extends LitElement {
   }
 
   async _rename() {
-    const newName = await promptText('이름 변경', this.name)
+    const newName = await promptText('Rename', this.name)
     if (!newName || newName === this.name) return
     try {
       const newPath = await window.api.rename(this.path, newName)
@@ -172,7 +172,7 @@ export class MdTreeItem extends LitElement {
   }
 
   async _delete() {
-    const ok = await confirmDanger(`'${this.name}'을(를) 휴지통으로 보낼까요?`)
+    const ok = await confirmDanger(`Move '${this.name}' to the recycle bin?`)
     if (!ok) return
     try {
       await window.api.delete(this.path)

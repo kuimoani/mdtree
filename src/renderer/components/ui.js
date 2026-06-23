@@ -44,6 +44,18 @@ function ensureStyles() {
       border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
     }
     .mt-field input:focus { border-color: #0e639c; }
+    .mt-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #d4d4d4; margin: 10px 0; }
+    .mt-dialog.settings { min-width: 540px; padding: 0; overflow: hidden; }
+    .mt-settings { display: grid; grid-template-columns: 150px 1fr; min-height: 280px; }
+    .mt-nav { background: #1e1e1e; border-right: 1px solid #3a3a3a; padding: 12px 0; }
+    .mt-nav .nav-item { padding: 8px 16px; font-size: 13px; color: #bbb; cursor: pointer; }
+    .mt-nav .nav-item:hover { background: #2a2d2e; color: #fff; }
+    .mt-nav .nav-item.active { background: #094771; color: #fff; }
+    .mt-panel { padding: 16px 20px; }
+    .mt-panel h3 { margin: 0 0 12px; }
+    .mt-panel .pane { display: none; }
+    .mt-panel .pane.show { display: block; }
+    .mt-dialog.settings .mt-buttons { padding: 0 20px 16px; margin-top: 0; }
     .mt-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
     .mt-buttons button {
       padding: 5px 14px; border-radius: 4px; font-size: 13px; cursor: pointer;
@@ -74,8 +86,8 @@ export function promptText(title, initial = '') {
         <h3></h3>
         <input type="text" />
         <div class="mt-buttons">
-          <button class="cancel">취소</button>
-          <button class="primary ok">확인</button>
+          <button class="cancel">Cancel</button>
+          <button class="primary ok">OK</button>
         </div>
       </div>`
     overlay.querySelector('h3').textContent = title
@@ -102,7 +114,7 @@ export function promptText(title, initial = '') {
   })
 }
 
-export function confirmDanger(message, okLabel = '삭제') {
+export function confirmDanger(message, okLabel = 'Delete') {
   ensureStyles()
   return new Promise((resolve) => {
     const overlay = document.createElement('div')
@@ -111,7 +123,7 @@ export function confirmDanger(message, okLabel = '삭제') {
       <div class="mt-dialog">
         <p class="mt-msg"></p>
         <div class="mt-buttons">
-          <button class="cancel">취소</button>
+          <button class="cancel">Cancel</button>
           <button class="danger ok"></button>
         </div>
       </div>`
@@ -130,74 +142,95 @@ export function confirmDanger(message, okLabel = '삭제') {
   })
 }
 
-// Settings dialog. Resolves to { fontFamily, fontSize } or null on cancel.
-export function openSettingsDialog(current) {
+// Two-pane settings dialog (General / Font / About). Resolves to the updated
+// settings object, or null on cancel. `initialTab` optionally selects a pane.
+export function openSettingsDialog(current, version, initialTab = 'general') {
   ensureStyles()
   return new Promise((resolve) => {
     const overlay = document.createElement('div')
     overlay.className = 'mt-overlay'
     overlay.innerHTML = `
-      <div class="mt-dialog" style="min-width:360px">
-        <h3>설정</h3>
-        <label class="mt-field">기본 폰트
-          <input type="text" class="ff" placeholder="예: Consolas, 'Malgun Gothic'" />
-        </label>
-        <label class="mt-field">폰트 크기 (px)
-          <input type="number" class="fs" min="8" max="48" step="1" />
-        </label>
+      <div class="mt-dialog settings">
+        <div class="mt-settings">
+          <nav class="mt-nav">
+            <div class="nav-item" data-tab="general">General</div>
+            <div class="nav-item" data-tab="font">Font</div>
+            <div class="nav-item" data-tab="about">About</div>
+          </nav>
+          <section class="mt-panel">
+            <div class="pane" data-pane="general">
+              <h3>General</h3>
+              <label class="mt-check">
+                <input type="checkbox" class="ln" /> Show line numbers
+              </label>
+            </div>
+            <div class="pane" data-pane="font">
+              <h3>Font</h3>
+              <label class="mt-field">Font family
+                <input type="text" class="ff" placeholder="e.g. Consolas, 'Courier New'" />
+              </label>
+              <label class="mt-field">Font size (px)
+                <input type="number" class="fs" min="8" max="48" step="1" />
+              </label>
+            </div>
+            <div class="pane" data-pane="about">
+              <div style="text-align:center;margin:2px 0 10px"><span style="display:inline-block;width:64px;height:64px">${APP_ICON_SVG}</span></div>
+              <h3 style="text-align:center">About MDTree</h3>
+              <p class="mt-msg" style="line-height:1.6;text-align:center">
+                <b>MDTree</b> — a lightweight multi-root Markdown note app<br/>
+                Version ${version || '0.1.0'}<br/>
+                Author: kuimoani<br/>
+                GitHub: <a href="#" class="gh">github.com/kuimoani/mdtree</a>
+              </p>
+            </div>
+          </section>
+        </div>
         <div class="mt-buttons">
-          <button class="cancel">취소</button>
-          <button class="primary ok">저장</button>
+          <button class="cancel">Cancel</button>
+          <button class="primary ok">Save</button>
         </div>
       </div>`
+
+    const ln = overlay.querySelector('.ln')
     const ff = overlay.querySelector('.ff')
     const fs = overlay.querySelector('.fs')
+    ln.checked = current.showLineNumbers !== false
     ff.value = current.fontFamily || ''
     fs.value = current.fontSize || 14
+
+    const selectTab = (tab) => {
+      overlay.querySelectorAll('.nav-item').forEach((n) =>
+        n.classList.toggle('active', n.dataset.tab === tab)
+      )
+      overlay.querySelectorAll('.pane').forEach((p) =>
+        p.classList.toggle('show', p.dataset.pane === tab)
+      )
+    }
+    overlay.querySelectorAll('.nav-item').forEach((n) => {
+      n.onclick = () => selectTab(n.dataset.tab)
+    })
+    selectTab(initialTab)
+
     const close = (val) => {
       overlay.remove()
       resolve(val)
     }
     overlay.querySelector('.cancel').onclick = () => close(null)
     overlay.querySelector('.ok').onclick = () =>
-      close({ fontFamily: ff.value.trim(), fontSize: Number(fs.value) || 14 })
+      close({
+        showLineNumbers: ln.checked,
+        fontFamily: ff.value.trim(),
+        fontSize: Number(fs.value) || 14,
+      })
     overlay.onclick = (e) => {
       if (e.target === overlay) close(null)
     }
+    overlay.querySelector('.gh').onclick = (e) => {
+      e.preventDefault()
+      window.api.openExternal('https://github.com/kuimoani/mdtree')
+    }
     document.body.appendChild(overlay)
-    ff.focus()
   })
-}
-
-// About dialog. github links open externally.
-export function showAbout(version) {
-  ensureStyles()
-  const overlay = document.createElement('div')
-  overlay.className = 'mt-overlay'
-  overlay.innerHTML = `
-    <div class="mt-dialog" style="min-width:360px">
-      <div style="text-align:center;margin:6px 0 10px"><span style="display:inline-block;width:64px;height:64px">${APP_ICON_SVG}</span></div>
-      <h3 style="text-align:center">MDTree 정보</h3>
-      <p class="mt-msg" style="line-height:1.6">
-        <b>MDTree</b> — 가벼운 멀티루트 마크다운 노트 앱<br/>
-        버전 ${version || '0.1.0'}<br/>
-        제작: kuimoani<br/>
-        GitHub: <a href="#" class="gh">github.com/kuimoani/mdtree</a>
-      </p>
-      <div class="mt-buttons">
-        <button class="primary ok">닫기</button>
-      </div>
-    </div>`
-  const close = () => overlay.remove()
-  overlay.querySelector('.ok').onclick = close
-  overlay.onclick = (e) => {
-    if (e.target === overlay) close()
-  }
-  overlay.querySelector('.gh').onclick = (e) => {
-    e.preventDefault()
-    window.api.openExternal('https://github.com/kuimoani/mdtree')
-  }
-  document.body.appendChild(overlay)
 }
 
 export function showContextMenu(x, y, items) {

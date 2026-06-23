@@ -1,11 +1,5 @@
 import { LitElement, html, css } from 'lit'
-import {
-  promptText,
-  showContextMenu,
-  notifyFsChange,
-  openSettingsDialog,
-  showAbout,
-} from './ui.js'
+import { promptText, showContextMenu, notifyFsChange, openSettingsDialog } from './ui.js'
 import { getSettings, setSettings } from './settings.js'
 
 const DEFAULT_ROOT_HEIGHT = 220
@@ -196,11 +190,11 @@ export class MdSidebar extends LitElement {
   _rootMenu(root, e) {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, [
-      { label: '새 문서', action: () => this._createAtRoot(root, 'file') },
-      { label: '새 폴더', action: () => this._createAtRoot(root, 'folder') },
+      { label: 'New Document', action: () => this._createAtRoot(root, 'file') },
+      { label: 'New Folder', action: () => this._createAtRoot(root, 'folder') },
       { sep: true },
       {
-        label: '워크폴더 제거',
+        label: 'Remove Workspace',
         danger: true,
         action: () =>
           this.dispatchEvent(
@@ -214,14 +208,14 @@ export class MdSidebar extends LitElement {
   _rootBodyMenu(root, e) {
     e.preventDefault()
     showContextMenu(e.clientX, e.clientY, [
-      { label: '새 문서', action: () => this._createAtRoot(root, 'file') },
-      { label: '새 폴더', action: () => this._createAtRoot(root, 'folder') },
+      { label: 'New Document', action: () => this._createAtRoot(root, 'file') },
+      { label: 'New Folder', action: () => this._createAtRoot(root, 'folder') },
     ])
   }
 
   async _createAtRoot(root, kind) {
     const name = await promptText(
-      kind === 'file' ? '새 문서 이름' : '새 폴더 이름',
+      kind === 'file' ? 'New document name' : 'New folder name',
       kind === 'file' ? 'untitled.md' : 'new-folder'
     )
     if (!name) return
@@ -278,23 +272,19 @@ export class MdSidebar extends LitElement {
     const s = getSettings()
     showContextMenu(e.clientX, e.clientY, [
       {
-        label: s.showAllFolders ? 'md 있는 폴더만 보기' : '모든 폴더 보기',
+        label: s.showAllFolders ? 'Show folders with .md only' : 'Show all folders',
         action: () => setSettings({ showAllFolders: !s.showAllFolders }),
       },
       { sep: true },
-      { label: '설정', action: () => this._openSettings() },
-      { label: '정보(About)', action: () => this._openAbout() },
+      { label: 'Settings', action: () => this._openSettings('general') },
+      { label: 'About', action: () => this._openSettings('about') },
     ])
   }
 
-  async _openSettings() {
-    const res = await openSettingsDialog(getSettings())
+  async _openSettings(tab = 'general') {
+    const version = await window.api.getVersion().catch(() => '0.1.0')
+    const res = await openSettingsDialog(getSettings(), version, tab)
     if (res) setSettings(res)
-  }
-
-  async _openAbout() {
-    const v = await window.api.getVersion().catch(() => '0.1.0')
-    showAbout(v)
   }
 
   // ---- per-root height drag ----
@@ -357,21 +347,21 @@ export class MdSidebar extends LitElement {
   render() {
     return html`
       <header>
-        <span>워크폴더</span>
+        <span>Workspaces</span>
         <div class="actions">
           <button
             class=${this._searchOpen ? 'on' : ''}
-            title="전체 검색"
+            title="Search all"
             @click=${this._toggleSearch}
           >
             🔍
           </button>
-          <button title="폴더 추가" @click=${() => this.dispatchEvent(new CustomEvent('add-workspace'))}>
+          <button title="Add folder" @click=${() => this.dispatchEvent(new CustomEvent('add-workspace'))}>
             +
           </button>
-          <button title="더 보기" @click=${this._moreMenu}>⋯</button>
+          <button title="More" @click=${this._moreMenu}>⋯</button>
           <button
-            title="사이드바 접기"
+            title="Collapse sidebar"
             @click=${() =>
               this.dispatchEvent(
                 new CustomEvent('toggle-sidebar', { bubbles: true, composed: true })
@@ -387,16 +377,16 @@ export class MdSidebar extends LitElement {
             <div class="search">
               <input
                 type="text"
-                placeholder="모든 워크폴더에서 검색…"
+                placeholder="Search across all workspaces…"
                 .value=${this._query}
                 @input=${this._runSearch}
               />
             </div>
             <div class="results">
               ${this._searching
-                ? html`<div class="hint">검색 중…</div>`
+                ? html`<div class="hint">Searching…</div>`
                 : this._query.trim() && this._results.length === 0
-                  ? html`<div class="hint">결과 없음</div>`
+                  ? html`<div class="hint">No results</div>`
                   : this._results.map(
                       (r) => html`<div class="result" @click=${() => this._openResult(r)}>
                         <div class="file">${r.name}:${r.line}</div>
@@ -409,7 +399,7 @@ export class MdSidebar extends LitElement {
 
       <div class="roots">
       ${this.workspaces.length === 0
-        ? html`<div class="empty">+ 를 누르거나 폴더를 끌어다 놓으세요</div>`
+        ? html`<div class="empty">Click + or drag a folder here</div>`
         : this.workspaces.map((w, i) => {
             const collapsed = this._collapsed.has(w.path)
             const style = collapsed ? '' : `height:${this._rootHeight(w.path)}px`
@@ -429,7 +419,7 @@ export class MdSidebar extends LitElement {
                   <span class="label">${w.name}</span>
                   <button
                     class="newdoc"
-                    title="새 문서"
+                    title="New document"
                     @click=${(e) => {
                       e.stopPropagation()
                       this._createAtRoot(w, 'file')
@@ -439,7 +429,7 @@ export class MdSidebar extends LitElement {
                   </button>
                   <button
                     class="remove"
-                    title="제거"
+                    title="Remove"
                     @click=${(e) => {
                       e.stopPropagation()
                       this.dispatchEvent(
@@ -470,7 +460,7 @@ export class MdSidebar extends LitElement {
                   ? ''
                   : html`<div
                       class="root-resizer"
-                      title="높이 조절"
+                      title="Drag to resize height"
                       @mousedown=${(e) => this._startRootResize(w.path, e)}
                     ></div>`}
               </div>

@@ -29,6 +29,7 @@ const settingsFile = join(app.getPath('userData'), 'settings.json')
 
 const defaultSettings = {
   showAllFolders: false, // false = only show folders that contain .md files
+  showLineNumbers: true,
   fontFamily: '',
   fontSize: 14,
 }

@@ -294,7 +294,7 @@ export class MdApp extends LitElement {
       : `${this.sidebarWidth}px 5px 1fr`
     return html`
       ${this.sidebarCollapsed
-        ? html`<button class="expand-side" title="사이드바 펼치기" @click=${this._toggleSidebar}>
+        ? html`<button class="expand-side" title="Expand sidebar" @click=${this._toggleSidebar}>
             ⟩
           </button>`
         : ''}
@@ -332,7 +332,7 @@ export class MdApp extends LitElement {
                 @doc-change=${this._onEdit}
                 @request-save=${this._saveActive}
               ></md-editor>`
-            : html`<div class="empty">.md 파일을 여기로 드래그하거나 왼쪽에서 선택하세요</div>`}
+            : html`<div class="empty">Drag a .md file here, or pick one from the sidebar</div>`}
         </div>
       </div>
       </div>

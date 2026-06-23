@@ -2,7 +2,12 @@
 // and broadcast on the 'mdtree-settings' window event when changed. Font is
 // applied as CSS custom properties on :root, which pierce shadow DOM.
 
-const DEFAULTS = { showAllFolders: false, fontFamily: '', fontSize: 14 }
+const DEFAULTS = {
+  showAllFolders: false,
+  showLineNumbers: true,
+  fontFamily: '',
+  fontSize: 14,
+}
 const FALLBACK_FONT = "'Segoe UI', system-ui, sans-serif"
 
 let _settings = { ...DEFAULTS }

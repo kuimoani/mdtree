@@ -24,6 +24,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { tags as t } from '@lezer/highlight'
+import { getSettings } from './settings.js'
 
 // Shared highlight style — keeps the raw markdown text but changes color & glyph
 // shape (heading size, bold, italic, code font). Used in BOTH modes.
@@ -97,6 +98,31 @@ class ImageWidget extends WidgetType {
   }
 }
 
+// Renders an actual horizontal rule in place of `---` / `***`.
+class HrWidget extends WidgetType {
+  eq() {
+    return true
+  }
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = 'cm-hr'
+    return el
+  }
+}
+
+// Renders a styled bullet in place of an unordered list marker (-, *, +).
+class BulletWidget extends WidgetType {
+  eq() {
+    return true
+  }
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = 'cm-bullet'
+    el.textContent = '•'
+    return el
+  }
+}
+
 // Resolve an image/link href that may be relative to the open file's directory.
 function resolveHref(href, basePath) {
   if (/^[a-z]+:\/\//i.test(href) || href.startsWith('data:')) return href
@@ -131,7 +157,25 @@ function livePreviewExt(host) {
             from,
             to,
             enter: (node) => {
+              const name = node.name
               const lineActive = activeLines.has(doc.lineAt(node.from).number)
+
+              // Code block — shaded background on every line (active or not).
+              if (name === 'FencedCode' || name === 'CodeBlock') {
+                const first = doc.lineAt(node.from).number
+                const last = doc.lineAt(Math.min(node.to, doc.length)).number
+                for (let n = first; n <= last; n++) {
+                  const line = doc.line(n)
+                  builder.add(line.from, line.from, Decoration.line({ class: 'cm-codeblock' }))
+                }
+                return false
+              }
+
+              // Horizontal rule — render an actual line (inactive lines only).
+              if (name === 'HorizontalRule' && !lineActive) {
+                builder.add(node.from, node.to, Decoration.replace({ widget: new HrWidget() }))
+                return false
+              }
 
               // Task list checkbox — always interactive.
               if (node.name === 'TaskMarker') {
@@ -178,6 +222,19 @@ function livePreviewExt(host) {
                   builder.add(node.from + close, node.to, Decoration.replace({}))
                   return false
                 }
+              }
+
+              // Unordered list marker → styled bullet (skip task-list items).
+              if (name === 'ListMark' && !lineActive) {
+                const mark = doc.sliceString(node.from, node.to)
+                if (mark === '-' || mark === '*' || mark === '+') {
+                  const rest = doc.sliceString(node.to, doc.lineAt(node.to).to)
+                  if (!/^\s*\[[ xX]\]/.test(rest)) {
+                    builder.add(node.from, node.to, Decoration.replace({ widget: new BulletWidget() }))
+                    return false
+                  }
+                }
+                return
               }
 
               // Heading marker — hide the #'s and the single trailing space.
@@ -262,11 +319,40 @@ function setLinePrefix(view, prefix) {
 
 function insertLink(view) {
   const r = view.state.selection.main
-  const text = view.state.sliceDoc(r.from, r.to) || '텍스트'
+  const text = view.state.sliceDoc(r.from, r.to) || 'text'
   view.dispatch({
     changes: { from: r.from, to: r.to, insert: `[${text}](url)` },
   })
   view.focus()
+}
+
+function insertImage(view) {
+  const r = view.state.selection.main
+  const alt = view.state.sliceDoc(r.from, r.to) || 'alt'
+  view.dispatch({ changes: { from: r.from, to: r.to, insert: `![${alt}](url)` } })
+  view.focus()
+}
+
+// Insert a block on its own line(s), ensuring it starts on a fresh line.
+function insertBlock(view, text) {
+  const head = view.state.selection.main.head
+  const line = view.state.doc.lineAt(head)
+  const atStart = head === line.from
+  const pos = atStart ? line.from : line.to
+  const insert = atStart ? text + '\n' : '\n' + text + '\n'
+  view.dispatch({ changes: { from: pos, insert } })
+  view.focus()
+}
+
+function insertHr(view) {
+  insertBlock(view, '---')
+}
+
+function insertTable(view) {
+  insertBlock(
+    view,
+    '| Column 1 | Column 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |'
+  )
 }
 
 export class MdEditor extends LitElement {
@@ -290,6 +376,7 @@ export class MdEditor extends LitElement {
     this._view = null
     this._previewCompartment = new Compartment()
     this._wrapCompartment = new Compartment()
+    this._lineNumbersCompartment = new Compartment()
   }
 
   static styles = css`
@@ -347,6 +434,20 @@ export class MdEditor extends LitElement {
       text-decoration: underline;
       cursor: pointer;
     }
+    .cm-codeblock {
+      background: #1b1f27;
+    }
+    .cm-bullet {
+      color: #56b6c2;
+      font-weight: bold;
+    }
+    .cm-hr {
+      display: inline-block;
+      width: 100%;
+      border-top: 2px solid #4b5263;
+      height: 0;
+      vertical-align: middle;
+    }
   `
 
   connectedCallback() {
@@ -357,8 +458,13 @@ export class MdEditor extends LitElement {
     super.disconnectedCallback()
     window.removeEventListener('mdtree-settings', this._onSettings)
   }
-  // Font family/size change via CSS vars — tell CodeMirror to remeasure geometry.
+  // Settings changed: toggle line numbers and remeasure for the new font.
   _onSettings = () => {
+    this._view?.dispatch({
+      effects: this._lineNumbersCompartment.reconfigure(
+        getSettings().showLineNumbers ? lineNumbers() : []
+      ),
+    })
     this._view?.requestMeasure()
   }
 
@@ -384,7 +490,7 @@ export class MdEditor extends LitElement {
     const state = EditorState.create({
       doc: this.content,
       extensions: [
-        lineNumbers(),
+        this._lineNumbersCompartment.of(getSettings().showLineNumbers ? lineNumbers() : []),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         highlightSelectionMatches(),
@@ -443,36 +549,44 @@ export class MdEditor extends LitElement {
     return html`
       <div class="toolbar">
         <div class="group">
-          <button title="제목 (H1)" @click=${() => this._cmd((v) => setLinePrefix(v, '# '))}>H1</button>
-          <button title="제목 (H2)" @click=${() => this._cmd((v) => setLinePrefix(v, '## '))}>H2</button>
-          <button title="굵게" @click=${() => this._cmd((v) => wrapInline(v, '**'))}><b>B</b></button>
-          <button title="기울임" @click=${() => this._cmd((v) => wrapInline(v, '*'))}><i>I</i></button>
-          <button title="취소선" @click=${() => this._cmd((v) => wrapInline(v, '~~'))}><s>S</s></button>
-          <button title="인라인 코드" @click=${() => this._cmd((v) => wrapInline(v, '\`'))}>&lt;/&gt;</button>
-          <button title="목록" @click=${() => this._cmd((v) => setLinePrefix(v, '- '))}>•</button>
-          <button title="체크박스" @click=${() => this._cmd((v) => setLinePrefix(v, '- [ ] '))}>☑</button>
-          <button title="인용" @click=${() => this._cmd((v) => setLinePrefix(v, '> '))}>❝</button>
-          <button title="링크" @click=${() => this._cmd((v) => insertLink(v))}>🔗</button>
+          <button title="Heading 1" @click=${() => this._cmd((v) => setLinePrefix(v, '# '))}>H1</button>
+          <button title="Heading 2" @click=${() => this._cmd((v) => setLinePrefix(v, '## '))}>H2</button>
+          <button title="Bold" @click=${() => this._cmd((v) => wrapInline(v, '**'))}><b>B</b></button>
+          <button title="Italic" @click=${() => this._cmd((v) => wrapInline(v, '*'))}><i>I</i></button>
+          <button title="Strikethrough" @click=${() => this._cmd((v) => wrapInline(v, '~~'))}><s>S</s></button>
+          <button title="Inline code" @click=${() => this._cmd((v) => wrapInline(v, '\`'))}>&lt;/&gt;</button>
+        </div>
+        <div class="group">
+          <button title="Bullet list" @click=${() => this._cmd((v) => setLinePrefix(v, '- '))}>•</button>
+          <button title="Numbered list" @click=${() => this._cmd((v) => setLinePrefix(v, '1. '))}>1.</button>
+          <button title="Checklist" @click=${() => this._cmd((v) => setLinePrefix(v, '- [ ] '))}>☑</button>
+          <button title="Quote" @click=${() => this._cmd((v) => setLinePrefix(v, '> '))}>❝</button>
+        </div>
+        <div class="group">
+          <button title="Link" @click=${() => this._cmd((v) => insertLink(v))}>🔗</button>
+          <button title="Image" @click=${() => this._cmd((v) => insertImage(v))}>🖼</button>
+          <button title="Table" @click=${() => this._cmd((v) => insertTable(v))}>▦</button>
+          <button title="Horizontal rule" @click=${() => this._cmd((v) => insertHr(v))}>―</button>
         </div>
         <div class="spacer"></div>
         <div class="group mode">
           <button
             class="save ${this.dirty ? 'dirty' : ''}"
-            title="저장 (Ctrl+S)"
+            title="Save (Ctrl+S)"
             @click=${() => this.dispatchEvent(new CustomEvent('request-save'))}
           >
             💾
           </button>
           <button
             class=${this.wrap ? 'active' : ''}
-            title=${this.wrap ? '줄바꿈 끄기 (가로 스크롤)' : '줄바꿈 켜기'}
+            title=${this.wrap ? 'Disable line wrap (horizontal scroll)' : 'Enable line wrap'}
             @click=${() => this._toggleWrap()}
           >
             ↩
           </button>
           <button
             class=${this.mode === 'source' ? 'active' : ''}
-            title="소스 모드"
+            title="Source mode"
             @click=${() => this._setMode('source')}
           >
             &lt;/&gt;

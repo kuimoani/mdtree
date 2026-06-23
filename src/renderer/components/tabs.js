@@ -63,7 +63,7 @@ export class MdTabs extends LitElement {
           ${t.dirty ? html`<span class="dot">●</span>` : ''}
           <button
             class="close"
-            title="닫기"
+            title="Close"
             @click=${(e) => {
               e.stopPropagation()
               this.dispatchEvent(new CustomEvent('close-tab', { detail: { index: i } }))
