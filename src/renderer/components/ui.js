@@ -125,6 +125,19 @@ export function showContextMenu(x, y, items) {
   document.querySelector('.mt-menu')?.remove()
   const menu = document.createElement('div')
   menu.className = 'mt-menu'
+
+  const close = () => {
+    menu.remove()
+    document.removeEventListener('mousedown', onDocDown, true)
+    window.removeEventListener('blur', close)
+  }
+  // Only dismiss on a click OUTSIDE the menu. Listening on mousedown but
+  // ignoring in-menu targets lets the item's own click handler still fire
+  // (mousedown precedes click, so a blanket mousedown-dismiss ate the click).
+  const onDocDown = (e) => {
+    if (!menu.contains(e.target)) close()
+  }
+
   for (const it of items) {
     if (it.sep) {
       const sep = document.createElement('div')
@@ -135,10 +148,10 @@ export function showContextMenu(x, y, items) {
     const el = document.createElement('div')
     el.className = 'item' + (it.danger ? ' danger' : '')
     el.textContent = it.label
-    el.onclick = () => {
-      menu.remove()
+    el.addEventListener('click', () => {
+      close()
       it.action?.()
-    }
+    })
     menu.appendChild(el)
   }
   menu.style.left = x + 'px'
@@ -148,11 +161,6 @@ export function showContextMenu(x, y, items) {
   const r = menu.getBoundingClientRect()
   if (r.right > window.innerWidth) menu.style.left = window.innerWidth - r.width - 4 + 'px'
   if (r.bottom > window.innerHeight) menu.style.top = window.innerHeight - r.height - 4 + 'px'
-  const dismiss = () => {
-    menu.remove()
-    document.removeEventListener('mousedown', dismiss)
-    window.removeEventListener('blur', dismiss)
-  }
-  setTimeout(() => document.addEventListener('mousedown', dismiss), 0)
-  window.addEventListener('blur', dismiss)
+  setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0)
+  window.addEventListener('blur', close)
 }
