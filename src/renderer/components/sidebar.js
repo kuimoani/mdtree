@@ -25,7 +25,19 @@ export class MdSidebar extends LitElement {
   }
 
   static styles = css`
-    :host { display: block; font-size: 13px; }
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      font-size: 13px;
+    }
+    .roots {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
     header {
       display: flex;
       align-items: center;
@@ -73,7 +85,19 @@ export class MdSidebar extends LitElement {
     .result .file { color: #4daafc; font-size: 11px; }
     .result .line { color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hint { padding: 8px 10px; color: #666; font-size: 12px; }
-    .root { border-top: 1px solid #2d2d2d; }
+    .root {
+      border-top: 1px solid #2d2d2d;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .root.expanded { flex: 1 1 0; }
+    .root.collapsed { flex: 0 0 auto; }
+    .root-body {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
     .root-head {
       display: flex;
       align-items: center;
@@ -220,6 +244,15 @@ export class MdSidebar extends LitElement {
           <button title="폴더 추가" @click=${() => this.dispatchEvent(new CustomEvent('add-workspace'))}>
             +
           </button>
+          <button
+            title="사이드바 접기"
+            @click=${() =>
+              this.dispatchEvent(
+                new CustomEvent('toggle-sidebar', { bubbles: true, composed: true })
+              )}
+          >
+            ⟨
+          </button>
         </div>
       </header>
 
@@ -248,12 +281,13 @@ export class MdSidebar extends LitElement {
           `
         : ''}
 
+      <div class="roots">
       ${this.workspaces.length === 0
         ? html`<div class="empty">+ 를 누르거나 폴더를 끌어다 놓으세요</div>`
         : this.workspaces.map((w, i) => {
             const collapsed = this._collapsed.has(w.path)
             return html`
-              <div class="root">
+              <div class="root ${collapsed ? 'collapsed' : 'expanded'}">
                 <div
                   class="root-head"
                   draggable="true"
@@ -281,16 +315,19 @@ export class MdSidebar extends LitElement {
                 </div>
                 ${collapsed
                   ? ''
-                  : html`<md-tree-item
-                      .path=${w.path}
-                      .name=${w.name}
-                      .isDir=${true}
-                      .expanded=${true}
-                      .root=${true}
-                    ></md-tree-item>`}
+                  : html`<div class="root-body">
+                      <md-tree-item
+                        .path=${w.path}
+                        .name=${w.name}
+                        .isDir=${true}
+                        .expanded=${true}
+                        .root=${true}
+                      ></md-tree-item>
+                    </div>`}
               </div>
             `
           })}
+      </div>
     `
   }
 }

@@ -254,6 +254,7 @@ export class MdEditor extends LitElement {
     content: {},
     gotoLine: {},
     mode: { state: true }, // 'source' | 'live'
+    wrap: { state: true }, // line wrapping on/off
   }
 
   constructor() {
@@ -262,8 +263,10 @@ export class MdEditor extends LitElement {
     this.content = ''
     this.gotoLine = 0
     this.mode = 'live'
+    this.wrap = true
     this._view = null
     this._previewCompartment = new Compartment()
+    this._wrapCompartment = new Compartment()
   }
 
   static styles = css`
@@ -305,6 +308,12 @@ export class MdEditor extends LitElement {
       overflow: hidden;
     }
     .cm-editor { height: 100%; }
+    /* Always show the vertical scrollbar; horizontal appears only when line
+       wrapping is off (content overflows). */
+    .cm-scroller {
+      overflow-y: scroll;
+      overflow-x: auto;
+    }
   `
 
   firstUpdated() {
@@ -336,7 +345,7 @@ export class MdEditor extends LitElement {
         markdown({ base: markdownLanguage, extensions: GFM }),
         syntaxHighlighting(mdHighlight),
         oneDark,
-        EditorView.lineWrapping,
+        this._wrapCompartment.of(this.wrap ? EditorView.lineWrapping : []),
         this._previewCompartment.of(this._previewExtension()),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
@@ -373,6 +382,13 @@ export class MdEditor extends LitElement {
     })
   }
 
+  _toggleWrap() {
+    this.wrap = !this.wrap
+    this._view?.dispatch({
+      effects: this._wrapCompartment.reconfigure(this.wrap ? EditorView.lineWrapping : []),
+    })
+  }
+
   _cmd(fn) {
     if (this._view) fn(this._view)
   }
@@ -394,6 +410,13 @@ export class MdEditor extends LitElement {
         </div>
         <div class="spacer"></div>
         <div class="group mode">
+          <button
+            class=${this.wrap ? 'active' : ''}
+            title=${this.wrap ? '줄바꿈 끄기 (가로 스크롤)' : '줄바꿈 켜기'}
+            @click=${() => this._toggleWrap()}
+          >
+            ↩
+          </button>
           <button
             class=${this.mode === 'source' ? 'active' : ''}
             title="소스 모드"

@@ -6,6 +6,8 @@ export class MdApp extends LitElement {
     workspaces: { state: true }, // [{ path, name }]
     tabs: { state: true }, // [{ path, name, content, dirty, gotoLine }]
     activeIndex: { state: true },
+    sidebarWidth: { state: true },
+    sidebarCollapsed: { state: true },
   }
 
   constructor() {
@@ -13,20 +15,49 @@ export class MdApp extends LitElement {
     this.workspaces = []
     this.tabs = []
     this.activeIndex = -1
+    this.sidebarWidth = 260
+    this.sidebarCollapsed = false
     this._restored = false
   }
 
   static styles = css`
     :host {
-      display: grid;
-      grid-template-columns: 260px 1fr;
+      display: block;
       height: 100vh;
+      position: relative;
+    }
+    .grid {
+      display: grid;
+      height: 100%;
     }
     .side {
       background: #252526;
       border-right: 1px solid #333;
-      overflow: auto;
+      overflow: hidden;
     }
+    .resizer {
+      cursor: col-resize;
+      background: transparent;
+    }
+    .resizer:hover,
+    .resizer.active {
+      background: #0e639c;
+    }
+    .expand-side {
+      position: absolute;
+      left: 6px;
+      top: 7px;
+      z-index: 5;
+      width: 26px;
+      height: 26px;
+      background: #2d2d2d;
+      border: 1px solid #444;
+      color: #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .expand-side:hover { background: #37373d; color: #fff; }
     .main {
       display: flex;
       flex-direction: column;
@@ -90,8 +121,31 @@ export class MdApp extends LitElement {
     }
   }
 
+  // ---- sidebar resize / collapse ----
+  _toggleSidebar = () => {
+    this.sidebarCollapsed = !this.sidebarCollapsed
+    this._persist()
+  }
+
+  _startResize = (e) => {
+    e.preventDefault()
+    const move = (ev) => {
+      // Sidebar starts at the left edge, so its width tracks the cursor X.
+      this.sidebarWidth = Math.min(500, Math.max(160, ev.clientX))
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      this._persist()
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
   async _restore() {
     const state = await window.api.loadState()
+    if (typeof state.sidebarWidth === 'number') this.sidebarWidth = state.sidebarWidth
+    if (typeof state.sidebarCollapsed === 'boolean') this.sidebarCollapsed = state.sidebarCollapsed
     this.workspaces = (state.workspaces || []).map((p) => ({ path: p, name: baseName(p) }))
     for (const tab of state.tabs || []) {
       await this._openFile(tab.path, false)
@@ -108,6 +162,8 @@ export class MdApp extends LitElement {
     window.api.saveState({
       workspaces: this.workspaces.map((w) => w.path),
       tabs: this.tabs.map((t, i) => ({ path: t.path, active: i === this.activeIndex })),
+      sidebarWidth: this.sidebarWidth,
+      sidebarCollapsed: this.sidebarCollapsed,
     })
   }
 
@@ -220,7 +276,16 @@ export class MdApp extends LitElement {
 
   render() {
     const active = this.tabs[this.activeIndex]
+    const cols = this.sidebarCollapsed
+      ? '0 1fr'
+      : `${this.sidebarWidth}px 5px 1fr`
     return html`
+      ${this.sidebarCollapsed
+        ? html`<button class="expand-side" title="사이드바 펼치기" @click=${this._toggleSidebar}>
+            ⟩
+          </button>`
+        : ''}
+      <div class="grid" style="grid-template-columns:${cols}" @toggle-sidebar=${this._toggleSidebar}>
       <div class="side">
         <md-sidebar
           .workspaces=${this.workspaces}
@@ -232,6 +297,9 @@ export class MdApp extends LitElement {
           @file-deleted=${this._onFileDeleted}
         ></md-sidebar>
       </div>
+      ${this.sidebarCollapsed
+        ? ''
+        : html`<div class="resizer" @mousedown=${this._startResize}></div>`}
       <div class="main">
         <md-tabs
           .tabs=${this.tabs}
@@ -249,6 +317,7 @@ export class MdApp extends LitElement {
               ></md-editor>`
             : html`<div class="empty">.md 파일을 여기로 드래그하거나 왼쪽에서 선택하세요</div>`}
         </div>
+      </div>
       </div>
     `
   }
