@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import {
   readFile,
   writeFile,
@@ -7,11 +7,15 @@ import {
   rename,
   stat,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadState, saveState, loadSettings, saveSettings } from './store.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Project build/icon.ico (present in dev and copied into packaged resources).
+const iconPath = join(__dirname, '../../build/icon.ico')
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -19,6 +23,7 @@ function createWindow() {
     height: 800,
     backgroundColor: '#1e1e1e',
     autoHideMenuBar: true, // hide the File/Edit/View/… menu bar; Alt reveals it
+    ...(existsSync(iconPath) ? { icon: iconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -191,13 +196,6 @@ ipcMain.handle('state:save', (_e, state) => saveState(state))
 ipcMain.handle('settings:load', () => loadSettings())
 ipcMain.handle('settings:save', (_e, s) => saveSettings(s))
 ipcMain.handle('app:version', () => app.getVersion())
-
-// Set the window/taskbar icon from a PNG data URL (rendered from the app emoji).
-ipcMain.handle('window:setIcon', (e, dataUrl) => {
-  const win = BrowserWindow.fromWebContents(e.sender)
-  if (win) win.setIcon(nativeImage.createFromDataURL(dataUrl))
-  return true
-})
 
 app.whenReady().then(() => {
   createWindow()

@@ -19,5 +19,4 @@ contextBridge.exposeInMainWorld('api', {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
   getVersion: () => ipcRenderer.invoke('app:version'),
-  setIcon: (dataUrl) => ipcRenderer.invoke('window:setIcon', dataUrl),
 })
