@@ -1,0 +1,38 @@
+{
+  "name": "mdtree",
+  "version": "0.1.0",
+  "description": "Lightweight multi-root Markdown note app",
+  "type": "module",
+  "main": "out/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "package": "electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/search": "^6.5.6",
+    "@codemirror/language": "^6.10.2",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "@codemirror/view": "^6.34.0",
+    "@lezer/highlight": "^1.2.1",
+    "@lezer/markdown": "^1.3.1",
+    "codemirror": "^6.0.1",
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "vite": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "0.21.5",
+    "@rollup/rollup-win32-x64-msvc": "^4.21.0"
+  }
+}
