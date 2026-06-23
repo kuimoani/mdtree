@@ -23,3 +23,26 @@ export async function saveState(state) {
   await mkdir(dirname(stateFile), { recursive: true })
   await writeFile(stateFile, JSON.stringify(state, null, 2), 'utf8')
 }
+
+// ---- app settings (fonts, folder visibility) ----
+const settingsFile = join(app.getPath('userData'), 'settings.json')
+
+const defaultSettings = {
+  showAllFolders: false, // false = only show folders that contain .md files
+  fontFamily: '',
+  fontSize: 14,
+}
+
+export async function loadSettings() {
+  try {
+    const raw = await readFile(settingsFile, 'utf8')
+    return { ...defaultSettings, ...JSON.parse(raw) }
+  } catch {
+    return { ...defaultSettings }
+  }
+}
+
+export async function saveSettings(settings) {
+  await mkdir(dirname(settingsFile), { recursive: true })
+  await writeFile(settingsFile, JSON.stringify(settings, null, 2), 'utf8')
+}

@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { promptText, confirmDanger, showContextMenu, notifyFsChange } from './ui.js'
+import { getSettings } from './settings.js'
 
 // ---- path helpers (renderer side; works for Windows '\' or POSIX '/') ----
 function sepOf(p) {
@@ -59,11 +60,13 @@ export class MdTreeItem extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener('mdtree-fs', this._onBus)
+    window.addEventListener('mdtree-settings', this._onSettings)
     if (this.root && this.expanded) this._load()
   }
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('mdtree-fs', this._onBus)
+    window.removeEventListener('mdtree-settings', this._onSettings)
   }
 
   // Reload when this directory's contents changed somewhere in the app.
@@ -71,10 +74,15 @@ export class MdTreeItem extends LitElement {
     if (this.isDir && e.detail.dirs?.includes(this.path)) this._load(true)
   }
 
+  // Folder-visibility setting changed → reload to apply the new filter.
+  _onSettings = () => {
+    if (this.isDir && this._loaded) this._load(true)
+  }
+
   async _load(force = false) {
     if (this._loaded && !force) return
     try {
-      this._children = await window.api.readDir(this.path)
+      this._children = await window.api.readDir(this.path, getSettings().showAllFolders)
     } catch {
       this._children = []
     }

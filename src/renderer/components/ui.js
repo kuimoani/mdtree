@@ -33,6 +33,16 @@ function ensureStyles() {
     }
     .mt-dialog input:focus { border-color: #0e639c; }
     .mt-msg { font-size: 13px; margin: 0 0 12px; }
+    .mt-msg a { color: #4daafc; cursor: pointer; }
+    .mt-field {
+      display: block; font-size: 12px; color: #aaa; margin: 10px 0;
+    }
+    .mt-field input {
+      display: block; width: 100%; box-sizing: border-box; margin-top: 4px;
+      background: #1e1e1e; color: #d4d4d4; border: 1px solid #555;
+      border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
+    }
+    .mt-field input:focus { border-color: #0e639c; }
     .mt-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
     .mt-buttons button {
       padding: 5px 14px; border-radius: 4px; font-size: 13px; cursor: pointer;
@@ -117,6 +127,75 @@ export function confirmDanger(message, okLabel = '삭제') {
     }
     document.body.appendChild(overlay)
   })
+}
+
+// Settings dialog. Resolves to { fontFamily, fontSize } or null on cancel.
+export function openSettingsDialog(current) {
+  ensureStyles()
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.className = 'mt-overlay'
+    overlay.innerHTML = `
+      <div class="mt-dialog" style="min-width:360px">
+        <h3>설정</h3>
+        <label class="mt-field">기본 폰트
+          <input type="text" class="ff" placeholder="예: Consolas, 'Malgun Gothic'" />
+        </label>
+        <label class="mt-field">폰트 크기 (px)
+          <input type="number" class="fs" min="8" max="48" step="1" />
+        </label>
+        <div class="mt-buttons">
+          <button class="cancel">취소</button>
+          <button class="primary ok">저장</button>
+        </div>
+      </div>`
+    const ff = overlay.querySelector('.ff')
+    const fs = overlay.querySelector('.fs')
+    ff.value = current.fontFamily || ''
+    fs.value = current.fontSize || 14
+    const close = (val) => {
+      overlay.remove()
+      resolve(val)
+    }
+    overlay.querySelector('.cancel').onclick = () => close(null)
+    overlay.querySelector('.ok').onclick = () =>
+      close({ fontFamily: ff.value.trim(), fontSize: Number(fs.value) || 14 })
+    overlay.onclick = (e) => {
+      if (e.target === overlay) close(null)
+    }
+    document.body.appendChild(overlay)
+    ff.focus()
+  })
+}
+
+// About dialog. github links open externally.
+export function showAbout(version) {
+  ensureStyles()
+  const overlay = document.createElement('div')
+  overlay.className = 'mt-overlay'
+  overlay.innerHTML = `
+    <div class="mt-dialog" style="min-width:360px">
+      <h3>MDTree 정보</h3>
+      <p class="mt-msg" style="line-height:1.6">
+        <b>MDTree</b> — 가벼운 멀티루트 마크다운 노트 앱<br/>
+        버전 ${version || '0.1.0'}<br/>
+        제작: kuimoani<br/>
+        GitHub: <a href="#" class="gh">github.com/kuimoani/mdtree</a>
+      </p>
+      <div class="mt-buttons">
+        <button class="primary ok">닫기</button>
+      </div>
+    </div>`
+  const close = () => overlay.remove()
+  overlay.querySelector('.ok').onclick = close
+  overlay.onclick = (e) => {
+    if (e.target === overlay) close()
+  }
+  overlay.querySelector('.gh').onclick = (e) => {
+    e.preventDefault()
+    window.api.openExternal('https://github.com/kuimoani/mdtree')
+  }
+  document.body.appendChild(overlay)
 }
 
 export function showContextMenu(x, y, items) {

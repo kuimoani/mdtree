@@ -1,5 +1,14 @@
 import { LitElement, html, css } from 'lit'
-import { promptText, showContextMenu, notifyFsChange } from './ui.js'
+import {
+  promptText,
+  showContextMenu,
+  notifyFsChange,
+  openSettingsDialog,
+  showAbout,
+} from './ui.js'
+import { getSettings, setSettings } from './settings.js'
+
+const DEFAULT_ROOT_HEIGHT = 220
 
 const DRAG_TYPE = 'application/x-mdtree-path'
 const sepOf = (p) => (p.includes('\\') ? '\\' : '/')
@@ -10,23 +19,27 @@ const isDescendant = (child, anc) => child === anc || child.startsWith(anc + sep
 export class MdSidebar extends LitElement {
   static properties = {
     workspaces: {},
+    rootHeights: {}, // path -> px (from app, persisted)
     _dragIndex: { state: true },
     _collapsed: { state: true }, // Set of collapsed root paths
     _searchOpen: { state: true },
     _query: { state: true },
     _results: { state: true },
     _searching: { state: true },
+    _drag: { state: true }, // active root-height drag { path, height }
   }
 
   constructor() {
     super()
     this.workspaces = []
+    this.rootHeights = {}
     this._dragIndex = -1
     this._collapsed = new Set()
     this._searchOpen = false
     this._query = ''
     this._results = []
     this._searching = false
+    this._drag = null
   }
 
   static styles = css`
@@ -97,15 +110,22 @@ export class MdSidebar extends LitElement {
       display: flex;
       flex-direction: column;
     }
-    /* Expanded roots share leftover space but never shrink below a usable
-       height (which previously let an entire root collapse to nothing). */
-    .root.expanded { flex: 1 1 0; min-height: 140px; }
+    /* Expanded roots have an explicit, drag-adjustable height; the root list
+       scrolls when they don't all fit. */
+    .root.expanded { flex: 0 0 auto; }
     .root.collapsed { flex: 0 0 auto; }
     .root-body {
-      flex: 1 1 0;
+      flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
     }
+    .root-resizer {
+      flex: 0 0 auto;
+      height: 5px;
+      cursor: row-resize;
+      background: transparent;
+    }
+    .root-resizer:hover { background: #0e639c; }
     .root-head {
       flex: 0 0 auto;
       display: flex;
@@ -252,6 +272,61 @@ export class MdSidebar extends LitElement {
     }
   }
 
+  // ---- overflow (...) menu: folder visibility + settings + about ----
+  _moreMenu(e) {
+    e.stopPropagation()
+    const s = getSettings()
+    showContextMenu(e.clientX, e.clientY, [
+      {
+        label: s.showAllFolders ? 'md 있는 폴더만 보기' : '모든 폴더 보기',
+        action: () => setSettings({ showAllFolders: !s.showAllFolders }),
+      },
+      { sep: true },
+      { label: '설정', action: () => this._openSettings() },
+      { label: '정보(About)', action: () => this._openAbout() },
+    ])
+  }
+
+  async _openSettings() {
+    const res = await openSettingsDialog(getSettings())
+    if (res) setSettings(res)
+  }
+
+  async _openAbout() {
+    const v = await window.api.getVersion().catch(() => '0.1.0')
+    showAbout(v)
+  }
+
+  // ---- per-root height drag ----
+  _rootHeight(path) {
+    if (this._drag?.path === path) return this._drag.height
+    return this.rootHeights?.[path] || DEFAULT_ROOT_HEIGHT
+  }
+
+  _startRootResize(path, e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startY = e.clientY
+    const startH = this._rootHeight(path)
+    const move = (ev) => {
+      this._drag = { path, height: Math.max(60, startH + (ev.clientY - startY)) }
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      if (this._drag) {
+        this.dispatchEvent(
+          new CustomEvent('resize-root', {
+            detail: { path: this._drag.path, height: this._drag.height },
+          })
+        )
+        this._drag = null
+      }
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
   // ---- search ----
   _toggleSearch() {
     this._searchOpen = !this._searchOpen
@@ -294,6 +369,7 @@ export class MdSidebar extends LitElement {
           <button title="폴더 추가" @click=${() => this.dispatchEvent(new CustomEvent('add-workspace'))}>
             +
           </button>
+          <button title="더 보기" @click=${this._moreMenu}>⋯</button>
           <button
             title="사이드바 접기"
             @click=${() =>
@@ -336,8 +412,9 @@ export class MdSidebar extends LitElement {
         ? html`<div class="empty">+ 를 누르거나 폴더를 끌어다 놓으세요</div>`
         : this.workspaces.map((w, i) => {
             const collapsed = this._collapsed.has(w.path)
+            const style = collapsed ? '' : `height:${this._rootHeight(w.path)}px`
             return html`
-              <div class="root ${collapsed ? 'collapsed' : 'expanded'}">
+              <div class="root ${collapsed ? 'collapsed' : 'expanded'}" style=${style}>
                 <div
                   class="root-head"
                   draggable="true"
@@ -389,6 +466,13 @@ export class MdSidebar extends LitElement {
                         .root=${true}
                       ></md-tree-item>
                     </div>`}
+                ${collapsed
+                  ? ''
+                  : html`<div
+                      class="root-resizer"
+                      title="높이 조절"
+                      @mousedown=${(e) => this._startRootResize(w.path, e)}
+                    ></div>`}
               </div>
             `
           })}

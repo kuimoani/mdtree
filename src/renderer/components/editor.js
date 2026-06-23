@@ -42,13 +42,9 @@ const mdHighlight = HighlightStyle.define([
   { tag: t.list, color: '#56b6c2' },
 ])
 
-const HIDDEN_MARKS = new Set([
-  'HeaderMark',
-  'EmphasisMark',
-  'CodeMark',
-  'StrikethroughMark',
-  'LinkMark',
-])
+// Inline formatting markers hidden on inactive lines. HeaderMark and Link are
+// handled separately (header trailing space; links show only their text).
+const HIDDEN_MARKS = new Set(['EmphasisMark', 'CodeMark', 'StrikethroughMark'])
 
 // ---- Live Preview widgets ----
 
@@ -167,7 +163,32 @@ function livePreviewExt(host) {
                 }
               }
 
-              // Hide formatting markers on inactive lines.
+              // Link — show only the link text (hide the [ and ](url) parts),
+              // styled and clickable, on inactive lines.
+              if (node.name === 'Link' && !lineActive) {
+                const raw = doc.sliceString(node.from, node.to)
+                const close = raw.indexOf(']')
+                if (close > 1) {
+                  builder.add(node.from, node.from + 1, Decoration.replace({}))
+                  builder.add(
+                    node.from + 1,
+                    node.from + close,
+                    Decoration.mark({ class: 'cm-mdlink' })
+                  )
+                  builder.add(node.from + close, node.to, Decoration.replace({}))
+                  return false
+                }
+              }
+
+              // Heading marker — hide the #'s and the single trailing space.
+              if (node.name === 'HeaderMark' && !lineActive) {
+                let end = node.to
+                if (doc.sliceString(end, end + 1) === ' ') end += 1
+                builder.add(node.from, end, Decoration.replace({}))
+                return
+              }
+
+              // Other inline formatting markers.
               if (HIDDEN_MARKS.has(node.name) && !lineActive) {
                 builder.add(node.from, node.to, Decoration.replace({}))
               }
@@ -253,6 +274,7 @@ export class MdEditor extends LitElement {
     path: {},
     content: {},
     gotoLine: {},
+    dirty: {},
     mode: { state: true }, // 'source' | 'live'
     wrap: { state: true }, // line wrapping on/off
   }
@@ -262,6 +284,7 @@ export class MdEditor extends LitElement {
     this.path = ''
     this.content = ''
     this.gotoLine = 0
+    this.dirty = false
     this.mode = 'live'
     this.wrap = true
     this._view = null
@@ -313,8 +336,31 @@ export class MdEditor extends LitElement {
     .cm-scroller {
       overflow-y: scroll;
       overflow-x: auto;
+      font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif) !important;
+      font-size: var(--md-font-size, 14px) !important;
+    }
+    .toolbar button.save.dirty {
+      color: #e6c07b;
+    }
+    .cm-mdlink {
+      color: #61afef;
+      text-decoration: underline;
+      cursor: pointer;
     }
   `
+
+  connectedCallback() {
+    super.connectedCallback()
+    window.addEventListener('mdtree-settings', this._onSettings)
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    window.removeEventListener('mdtree-settings', this._onSettings)
+  }
+  // Font family/size change via CSS vars — tell CodeMirror to remeasure geometry.
+  _onSettings = () => {
+    this._view?.requestMeasure()
+  }
 
   firstUpdated() {
     this._createView()
@@ -396,6 +442,15 @@ export class MdEditor extends LitElement {
   render() {
     return html`
       <div class="toolbar">
+        <div class="group">
+          <button
+            class="save ${this.dirty ? 'dirty' : ''}"
+            title="저장 (Ctrl+S)"
+            @click=${() => this.dispatchEvent(new CustomEvent('request-save'))}
+          >
+            💾
+          </button>
+        </div>
         <div class="group">
           <button title="제목 (H1)" @click=${() => this._cmd((v) => setLinePrefix(v, '# '))}>H1</button>
           <button title="제목 (H2)" @click=${() => this._cmd((v) => setLinePrefix(v, '## '))}>H2</button>

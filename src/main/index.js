@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadState, saveState } from './store.js'
+import { loadState, saveState, loadSettings, saveSettings } from './store.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -50,17 +50,41 @@ ipcMain.handle('fs:pathInfo', async (_e, p) => {
   }
 })
 
-// List immediate children of a directory (folders + .md files only).
-ipcMain.handle('fs:readDir', async (_e, dirPath) => {
+// Does this directory (recursively) contain at least one .md file?
+async function dirHasMarkdown(dir) {
+  let entries
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  for (const d of entries) {
+    if (d.isDirectory()) {
+      if (d.name === 'node_modules' || d.name.startsWith('.')) continue
+      if (await dirHasMarkdown(join(dir, d.name))) return true
+    } else if (d.name.toLowerCase().endsWith('.md')) {
+      return true
+    }
+  }
+  return false
+}
+
+// List immediate children (folders + .md files). When showAllFolders is false,
+// folders with no .md anywhere in their subtree are hidden.
+ipcMain.handle('fs:readDir', async (_e, dirPath, showAllFolders = false) => {
   const entries = await readdir(dirPath, { withFileTypes: true })
-  return entries
-    .filter((d) => d.isDirectory() || d.name.toLowerCase().endsWith('.md'))
-    .map((d) => ({
-      name: d.name,
-      path: join(dirPath, d.name),
-      isDir: d.isDirectory(),
-    }))
-    .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1))
+  const out = []
+  for (const d of entries) {
+    if (d.isDirectory()) {
+      if (!showAllFolders && !(await dirHasMarkdown(join(dirPath, d.name)))) continue
+      out.push({ name: d.name, path: join(dirPath, d.name), isDir: true })
+    } else if (d.name.toLowerCase().endsWith('.md')) {
+      out.push({ name: d.name, path: join(dirPath, d.name), isDir: false })
+    }
+  }
+  return out.sort((a, b) =>
+    a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1
+  )
 })
 
 ipcMain.handle('fs:readFile', async (_e, filePath) => {
@@ -159,10 +183,13 @@ ipcMain.handle('shell:openExternal', async (_e, url) => {
   return true
 })
 
-// ---- IPC: session state ----
+// ---- IPC: session state + settings ----
 
 ipcMain.handle('state:load', () => loadState())
 ipcMain.handle('state:save', (_e, state) => saveState(state))
+ipcMain.handle('settings:load', () => loadSettings())
+ipcMain.handle('settings:save', (_e, s) => saveSettings(s))
+ipcMain.handle('app:version', () => app.getVersion())
 
 app.whenReady().then(() => {
   createWindow()

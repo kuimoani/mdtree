@@ -8,6 +8,7 @@ export class MdApp extends LitElement {
     activeIndex: { state: true },
     sidebarWidth: { state: true },
     sidebarCollapsed: { state: true },
+    rootHeights: { state: true },
   }
 
   constructor() {
@@ -17,6 +18,7 @@ export class MdApp extends LitElement {
     this.activeIndex = -1
     this.sidebarWidth = 260
     this.sidebarCollapsed = false
+    this.rootHeights = {} // workspace path -> px height in the sidebar
     this._restored = false
   }
 
@@ -131,6 +133,11 @@ export class MdApp extends LitElement {
     this._persist()
   }
 
+  _onResizeRoot = (e) => {
+    this.rootHeights = { ...this.rootHeights, [e.detail.path]: e.detail.height }
+    this._persist()
+  }
+
   _startResize = (e) => {
     e.preventDefault()
     const move = (ev) => {
@@ -150,6 +157,7 @@ export class MdApp extends LitElement {
     const state = await window.api.loadState()
     if (typeof state.sidebarWidth === 'number') this.sidebarWidth = state.sidebarWidth
     if (typeof state.sidebarCollapsed === 'boolean') this.sidebarCollapsed = state.sidebarCollapsed
+    if (state.rootHeights && typeof state.rootHeights === 'object') this.rootHeights = state.rootHeights
     this.workspaces = (state.workspaces || []).map((p) => ({ path: p, name: baseName(p) }))
     for (const tab of state.tabs || []) {
       await this._openFile(tab.path, false)
@@ -168,6 +176,7 @@ export class MdApp extends LitElement {
       tabs: this.tabs.map((t, i) => ({ path: t.path, active: i === this.activeIndex })),
       sidebarWidth: this.sidebarWidth,
       sidebarCollapsed: this.sidebarCollapsed,
+      rootHeights: this.rootHeights,
     })
   }
 
@@ -293,12 +302,14 @@ export class MdApp extends LitElement {
       <div class="side">
         <md-sidebar
           .workspaces=${this.workspaces}
+          .rootHeights=${this.rootHeights}
           @add-workspace=${this._addWorkspace}
           @remove-workspace=${this._removeWorkspace}
           @reorder-workspaces=${this._reorderWorkspaces}
           @open-file=${this._onOpenFile}
           @file-renamed=${this._onFileRenamed}
           @file-deleted=${this._onFileDeleted}
+          @resize-root=${this._onResizeRoot}
         ></md-sidebar>
       </div>
       ${this.sidebarCollapsed
@@ -317,7 +328,9 @@ export class MdApp extends LitElement {
                 .path=${active.path}
                 .content=${active.content}
                 .gotoLine=${active.gotoLine || 0}
+                .dirty=${active.dirty}
                 @doc-change=${this._onEdit}
+                @request-save=${this._saveActive}
               ></md-editor>`
             : html`<div class="empty">.md 파일을 여기로 드래그하거나 왼쪽에서 선택하세요</div>`}
         </div>
