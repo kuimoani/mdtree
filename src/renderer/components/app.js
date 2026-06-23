@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import { confirmDanger } from './ui.js'
 
 // Root shell: owns workspace + tab state, persists session, wires child components.
 export class MdApp extends LitElement {
@@ -230,8 +231,16 @@ export class MdApp extends LitElement {
     this.activeIndex = e.detail.index
   }
 
-  _closeTab(e) {
+  async _closeTab(e) {
     const i = e.detail.index
+    const t = this.tabs[i]
+    if (t?.dirty) {
+      const ok = await confirmDanger(
+        `"${t.name}" has unsaved changes. Close without saving?`,
+        'Close Without Saving'
+      )
+      if (!ok) return
+    }
     this.tabs = this.tabs.filter((_, idx) => idx !== i)
     if (this.activeIndex >= this.tabs.length) this.activeIndex = this.tabs.length - 1
     this._persist()

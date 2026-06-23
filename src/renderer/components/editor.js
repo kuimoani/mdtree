@@ -4,6 +4,7 @@ import {
   Compartment,
   RangeSetBuilder,
   EditorSelection,
+  StateField,
 } from '@codemirror/state'
 import {
   EditorView,
@@ -123,6 +124,76 @@ class BulletWidget extends WidgetType {
   }
 }
 
+// Splits a GFM table row "| a | b |" into trimmed cell strings, dropping the
+// empty leading/trailing entries produced by the outer pipes.
+function splitTableRow(line) {
+  const cells = line.split('|')
+  if (cells.length && cells[0].trim() === '') cells.shift()
+  if (cells.length && cells[cells.length - 1].trim() === '') cells.pop()
+  return cells.map((c) => c.trim())
+}
+
+function parseTable(raw) {
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length)
+  if (lines.length < 2) return null
+  const header = splitTableRow(lines[0])
+  const aligns = splitTableRow(lines[1]).map((seg) => {
+    const left = seg.startsWith(':')
+    const right = seg.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    if (left) return 'left'
+    return ''
+  })
+  const rows = lines.slice(2).map(splitTableRow)
+  return { header, aligns, rows }
+}
+
+// Renders a GFM table as an actual <table> in place of the raw markdown.
+class TableWidget extends WidgetType {
+  constructor(raw) {
+    super()
+    this.raw = raw
+    this.parsed = parseTable(raw)
+  }
+  eq(o) {
+    return o.raw === this.raw
+  }
+  toDOM() {
+    if (!this.parsed) {
+      const span = document.createElement('span')
+      span.textContent = this.raw
+      return span
+    }
+    const { header, aligns, rows } = this.parsed
+    const table = document.createElement('table')
+    table.className = 'cm-mdtable'
+    const thead = document.createElement('thead')
+    const htr = document.createElement('tr')
+    header.forEach((h, i) => {
+      const th = document.createElement('th')
+      th.textContent = h
+      if (aligns[i]) th.style.textAlign = aligns[i]
+      htr.appendChild(th)
+    })
+    thead.appendChild(htr)
+    table.appendChild(thead)
+    const tbody = document.createElement('tbody')
+    rows.forEach((row) => {
+      const tr = document.createElement('tr')
+      row.forEach((cell, i) => {
+        const td = document.createElement('td')
+        td.textContent = cell
+        if (aligns[i]) td.style.textAlign = aligns[i]
+        tr.appendChild(td)
+      })
+      tbody.appendChild(tr)
+    })
+    table.appendChild(tbody)
+    return table
+  }
+}
+
 // Resolve an image/link href that may be relative to the open file's directory.
 function resolveHref(href, basePath) {
   if (/^[a-z]+:\/\//i.test(href) || href.startsWith('data:')) return href
@@ -176,6 +247,11 @@ function livePreviewExt(host) {
                 builder.add(node.from, node.to, Decoration.replace({ widget: new HrWidget() }))
                 return false
               }
+
+              // GFM table — handled by a separate StateField (see tableField
+              // below); skip its subtree here so inline marks inside cells
+              // don't get processed twice.
+              if (name === 'Table') return false
 
               // Task list checkbox — always interactive.
               if (node.name === 'TaskMarker') {
@@ -282,8 +358,52 @@ function livePreviewExt(host) {
     },
   })
 
-  return [plugin, clickLinks]
+  return [plugin, clickLinks, tableField]
 }
+
+// GFM tables render as an actual <table> (a block decoration), which
+// CodeMirror only allows from a StateField, not a ViewPlugin — hence this
+// lives separately from the rest of the Live Preview decorations above.
+function buildTableDecorations(state) {
+  const builder = new RangeSetBuilder()
+  const doc = state.doc
+  const activeLines = new Set()
+  for (const r of state.selection.ranges) activeLines.add(doc.lineAt(r.head).number)
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== 'Table') return
+      const firstLine = doc.lineAt(node.from)
+      const lastLine = doc.lineAt(Math.min(node.to, doc.length))
+      let active = false
+      for (let n = firstLine.number; n <= lastLine.number; n++) {
+        if (activeLines.has(n)) {
+          active = true
+          break
+        }
+      }
+      if (!active) {
+        const raw = doc.sliceString(firstLine.from, lastLine.to)
+        builder.add(
+          firstLine.from,
+          lastLine.to,
+          Decoration.replace({ widget: new TableWidget(raw), block: true })
+        )
+      }
+      return false
+    },
+  })
+  return builder.finish()
+}
+
+const tableField = StateField.define({
+  create(state) {
+    return buildTableDecorations(state)
+  },
+  update(value, tr) {
+    return tr.docChanged || tr.selection ? buildTableDecorations(tr.state) : value
+  },
+  provide: (f) => EditorView.decorations.from(f),
+})
 
 function linkUrlAt(view, pos) {
   let node = syntaxTree(view.state).resolveInner(pos, 0)
@@ -353,6 +473,12 @@ function insertTable(view) {
     view,
     '| Column 1 | Column 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |'
   )
+}
+
+function insertCodeBlock(view) {
+  const r = view.state.selection.main
+  const selected = view.state.sliceDoc(r.from, r.to)
+  insertBlock(view, '```\n' + (selected || 'code') + '\n```')
 }
 
 export class MdEditor extends LitElement {
@@ -447,6 +573,23 @@ export class MdEditor extends LitElement {
       border-top: 2px solid #4b5263;
       height: 0;
       vertical-align: middle;
+    }
+    .cm-mdtable {
+      border-collapse: collapse;
+      margin: 4px 0;
+      font-size: 0.95em;
+    }
+    .cm-mdtable th,
+    .cm-mdtable td {
+      border: 1px solid #3a3f4b;
+      padding: 4px 10px;
+    }
+    .cm-mdtable th {
+      background: #2a2f3a;
+      font-weight: bold;
+    }
+    .cm-mdtable tr:nth-child(even) td {
+      background: #1f242e;
     }
   `
 
@@ -566,6 +709,7 @@ export class MdEditor extends LitElement {
           <button title="Link" @click=${() => this._cmd((v) => insertLink(v))}>🔗</button>
           <button title="Image" @click=${() => this._cmd((v) => insertImage(v))}>🖼</button>
           <button title="Table" @click=${() => this._cmd((v) => insertTable(v))}>▦</button>
+          <button title="Code block" @click=${() => this._cmd((v) => insertCodeBlock(v))}>{ }</button>
           <button title="Horizontal rule" @click=${() => this._cmd((v) => insertHr(v))}>―</button>
         </div>
         <div class="spacer"></div>
