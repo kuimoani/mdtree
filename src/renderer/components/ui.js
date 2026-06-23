@@ -175,7 +175,8 @@ export function showAbout(version) {
   overlay.className = 'mt-overlay'
   overlay.innerHTML = `
     <div class="mt-dialog" style="min-width:360px">
-      <h3>MDTree 정보</h3>
+      <div style="text-align:center;font-size:56px;line-height:1;margin:6px 0 10px">🪾</div>
+      <h3 style="text-align:center">MDTree 정보</h3>
       <p class="mt-msg" style="line-height:1.6">
         <b>MDTree</b> — 가벼운 멀티루트 마크다운 노트 앱<br/>
         버전 ${version || '0.1.0'}<br/>

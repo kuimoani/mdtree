@@ -443,15 +443,6 @@ export class MdEditor extends LitElement {
     return html`
       <div class="toolbar">
         <div class="group">
-          <button
-            class="save ${this.dirty ? 'dirty' : ''}"
-            title="저장 (Ctrl+S)"
-            @click=${() => this.dispatchEvent(new CustomEvent('request-save'))}
-          >
-            💾
-          </button>
-        </div>
-        <div class="group">
           <button title="제목 (H1)" @click=${() => this._cmd((v) => setLinePrefix(v, '# '))}>H1</button>
           <button title="제목 (H2)" @click=${() => this._cmd((v) => setLinePrefix(v, '## '))}>H2</button>
           <button title="굵게" @click=${() => this._cmd((v) => wrapInline(v, '**'))}><b>B</b></button>
@@ -465,6 +456,13 @@ export class MdEditor extends LitElement {
         </div>
         <div class="spacer"></div>
         <div class="group mode">
+          <button
+            class="save ${this.dirty ? 'dirty' : ''}"
+            title="저장 (Ctrl+S)"
+            @click=${() => this.dispatchEvent(new CustomEvent('request-save'))}
+          >
+            💾
+          </button>
           <button
             class=${this.wrap ? 'active' : ''}
             title=${this.wrap ? '줄바꿈 끄기 (가로 스크롤)' : '줄바꿈 켜기'}

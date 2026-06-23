@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron'
 import {
   readFile,
   writeFile,
@@ -18,6 +18,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     backgroundColor: '#1e1e1e',
+    autoHideMenuBar: true, // hide the File/Edit/View/… menu bar; Alt reveals it
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -190,6 +191,13 @@ ipcMain.handle('state:save', (_e, state) => saveState(state))
 ipcMain.handle('settings:load', () => loadSettings())
 ipcMain.handle('settings:save', (_e, s) => saveSettings(s))
 ipcMain.handle('app:version', () => app.getVersion())
+
+// Set the window/taskbar icon from a PNG data URL (rendered from the app emoji).
+ipcMain.handle('window:setIcon', (e, dataUrl) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  if (win) win.setIcon(nativeImage.createFromDataURL(dataUrl))
+  return true
+})
 
 app.whenReady().then(() => {
   createWindow()
