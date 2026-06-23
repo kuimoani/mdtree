@@ -5,10 +5,11 @@ import { app, BrowserWindow } from 'electron'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { APP_ICON_SVG } from '../src/renderer/components/icon.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const EMOJI = '🪾'
 const SIZES = [16, 24, 32, 48, 64, 128, 256]
+const SVG_DATA_URL = 'data:image/svg+xml;base64,' + Buffer.from(APP_ICON_SVG).toString('base64')
 
 function packIco(images) {
   const count = images.length
@@ -41,19 +42,22 @@ app.whenReady().then(async () => {
   const images = []
   for (const size of SIZES) {
     const dataUrl = await win.webContents.executeJavaScript(`
-      (function () {
+      new Promise((resolve) => {
         const size = ${size}
-        const c = document.createElement('canvas')
-        c.width = c.height = size
-        const x = c.getContext('2d')
-        x.clearRect(0, 0, size, size)
-        x.textAlign = 'center'
-        x.textBaseline = 'middle'
-        x.font = Math.floor(size * 0.82) + 'px "Segoe UI Emoji", serif'
-        x.fillText(${JSON.stringify(EMOJI)}, size / 2, size / 2 + size * 0.04)
-        return c.toDataURL('image/png')
-      })()
+        const img = new Image()
+        img.onload = () => {
+          const c = document.createElement('canvas')
+          c.width = c.height = size
+          const x = c.getContext('2d')
+          x.clearRect(0, 0, size, size)
+          x.drawImage(img, 0, 0, size, size)
+          resolve(c.toDataURL('image/png'))
+        }
+        img.onerror = () => resolve(null)
+        img.src = ${JSON.stringify(SVG_DATA_URL)}
+      })
     `)
+    if (!dataUrl) throw new Error('failed to rasterize SVG at size ' + size)
     images.push({ size, buf: Buffer.from(dataUrl.split(',')[1], 'base64') })
   }
   const outDir = join(__dirname, '..', 'build')

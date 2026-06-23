@@ -1,6 +1,7 @@
 // Plain DOM helpers (appended to document.body, not shadow DOM) for modal prompts,
 // confirms, and right-click context menus. Electron disables window.prompt/confirm,
 // so we roll our own dark-themed versions returning promises.
+import { APP_ICON_SVG } from './icon.js'
 
 // Broadcast that the contents of one or more directories changed, so the tree
 // nodes for those directories reload. Uses a window event bus because tree nodes
@@ -175,7 +176,7 @@ export function showAbout(version) {
   overlay.className = 'mt-overlay'
   overlay.innerHTML = `
     <div class="mt-dialog" style="min-width:360px">
-      <div style="text-align:center;font-size:56px;line-height:1;margin:6px 0 10px">🪾</div>
+      <div style="text-align:center;margin:6px 0 10px"><span style="display:inline-block;width:64px;height:64px">${APP_ICON_SVG}</span></div>
       <h3 style="text-align:center">MDTree 정보</h3>
       <p class="mt-msg" style="line-height:1.6">
         <b>MDTree</b> — 가벼운 멀티루트 마크다운 노트 앱<br/>
