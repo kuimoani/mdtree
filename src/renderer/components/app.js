@@ -29,6 +29,10 @@ export class MdApp extends LitElement {
     .grid {
       display: grid;
       height: 100%;
+      /* Explicit single full-height row so children track the window height
+         (without this the row is auto-sized to content and resizing the
+         window won't propagate height to the editor / sidebar). */
+      grid-template-rows: minmax(0, 1fr);
     }
     .side {
       background: #252526;

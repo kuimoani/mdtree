@@ -36,7 +36,9 @@ export class MdSidebar extends LitElement {
       min-height: 0;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      /* Scroll the whole list when expanded roots don't all fit, instead of
+         clipping a root out of view. */
+      overflow-y: auto;
     }
     header {
       display: flex;
@@ -89,9 +91,10 @@ export class MdSidebar extends LitElement {
       border-top: 1px solid #2d2d2d;
       display: flex;
       flex-direction: column;
-      min-height: 0;
     }
-    .root.expanded { flex: 1 1 0; }
+    /* Expanded roots share leftover space but never shrink below a usable
+       height (which previously let an entire root collapse to nothing). */
+    .root.expanded { flex: 1 1 0; min-height: 140px; }
     .root.collapsed { flex: 0 0 auto; }
     .root-body {
       flex: 1 1 0;
@@ -99,6 +102,7 @@ export class MdSidebar extends LitElement {
       overflow-y: auto;
     }
     .root-head {
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
       gap: 4px;
