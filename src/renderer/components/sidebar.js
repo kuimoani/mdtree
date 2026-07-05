@@ -100,9 +100,14 @@ export class MdSidebar extends LitElement {
     .result .line { color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hint { padding: 8px 10px; color: #666; font-size: 12px; }
     .root {
-      border-top: 1px solid #2d2d2d;
       display: flex;
       flex-direction: column;
+      border-width: 1px;
+      border-style: solid;
+      border-color: #333333;
+      border-radius: 10px;
+      margin: 0px 4px 4px 4px;
+      background: #1c1c1c;
     }
     /* Expanded roots have an explicit, drag-adjustable height; the root list
        scrolls when they don't all fit. */
