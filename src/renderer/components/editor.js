@@ -53,6 +53,13 @@ for (const [name, def] of Object.entries(HLJS_LANGS)) hljs.registerLanguage(name
 
 // Dark-theme + layout overrides layered on top of EasyMDE's light defaults.
 const overridesCss = `
+  .EasyMDEContainer {
+    --md-code-bg: #23272e;
+    --md-code-fg: #d4d4d4;
+    --md-code-border: #3a3f4b;
+    --md-code-radius: 4px;
+    --md-code-pad-y: 10px;
+  }
   .EasyMDEContainer { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
   .EasyMDEContainer .CodeMirror {
     flex: 1; min-height: 0; height: auto; border: none;
@@ -75,7 +82,30 @@ const overridesCss = `
   .cm-s-easymde .cm-quote { color: #7f848e; }
   .cm-s-easymde .cm-link { color: #61afef; }
   .cm-s-easymde .cm-url { color: #56b6c2; }
-  .cm-s-easymde .cm-comment { color: #98c379; background: #23272e; }
+  .cm-s-easymde .cm-comment { color: #98c379; background: transparent; }
+  .cm-s-easymde .mt-codeblock-line {
+    background: var(--md-code-bg);
+    color: var(--md-code-fg);
+    border-left: 1px solid var(--md-code-border);
+    border-right: 1px solid var(--md-code-border);
+  }
+  .cm-s-easymde .mt-codeblock-line .CodeMirror-line {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .cm-s-easymde .mt-codeblock-line .cm-comment {
+    background: transparent !important;
+  }
+  .cm-s-easymde .mt-codeblock-start {
+    border-top: 1px solid var(--md-code-border);
+    border-top-left-radius: var(--md-code-radius);
+    border-top-right-radius: var(--md-code-radius);
+  }
+  .cm-s-easymde .mt-codeblock-end {
+    border-bottom: 1px solid var(--md-code-border);
+    border-bottom-left-radius: var(--md-code-radius);
+    border-bottom-right-radius: var(--md-code-radius);
+  }
   .editor-toolbar { background: #252526; border: none; border-bottom: 1px solid #333; opacity: 1; }
   .editor-toolbar button { color: #cccccc; border: 1px solid transparent; }
   .editor-toolbar button:hover { background: #2a2d2e; border-color: #3a3a3a; }
@@ -108,7 +138,12 @@ const overridesCss = `
     font-family: 'Consolas', monospace; font-size: 0.95em;
   }
   :is(.editor-preview, .editor-preview-side) pre {
-    background: #23272e; color: #d4d4d4; padding: 10px; border-radius: 4px; overflow: auto;
+    background: var(--md-code-bg);
+    color: var(--md-code-fg);
+    border: 1px solid var(--md-code-border);
+    padding: var(--md-code-pad-y);
+    border-radius: var(--md-code-radius);
+    overflow: auto;
   }
   :is(.editor-preview, .editor-preview-side) pre code {
     background: none; color: inherit; padding: 0; font-size: 1em;
@@ -214,6 +249,7 @@ export class MdEditor extends LitElement {
     this._mde = null
     this._saveBtn = null
     this._editorPath = null
+    this._fenceStyled = new Set()
   }
 
   connectedCallback() {
@@ -231,6 +267,7 @@ export class MdEditor extends LitElement {
   // after the editor was already built (in the default 'edit' view).
   _onSettings = () => {
     this._mde?.codemirror.refresh()
+    this._refreshFenceLineClasses()
     this._applyViewMode()
   }
 
@@ -266,6 +303,7 @@ export class MdEditor extends LitElement {
       this._mde = null
       this._saveBtn = null
     }
+    this._fenceStyled.clear()
   }
 
   _createEditor() {
@@ -353,6 +391,12 @@ export class MdEditor extends LitElement {
       ],
     })
 
+    const cm = this._mde.codemirror
+    const refreshFenceStyles = () => this._refreshFenceLineClasses()
+    cm.on('change', refreshFenceStyles)
+    cm.on('viewportChange', refreshFenceStyles)
+    queueMicrotask(refreshFenceStyles)
+
     this._saveBtn = host.querySelector('.editor-toolbar .mt-save')
     if (this.dirty) this._saveBtn?.classList.add('mt-dirty')
 
@@ -399,6 +443,89 @@ export class MdEditor extends LitElement {
     } else if (mode === 'preview' && !this._mde.isPreviewActive()) {
       EasyMDE.togglePreview(this._mde)
     }
+  }
+
+  _collectFenceFlags(cm) {
+    const lineCount = cm.lineCount()
+    const flags = new Array(lineCount).fill(false)
+
+    let inFence = false
+    let fenceChar = ''
+    let fenceLen = 0
+
+    for (let i = 0; i < lineCount; i++) {
+      const line = cm.getLine(i) || ''
+      const trimmed = line.trimStart()
+
+      const m = trimmed.match(/^([`~]{3,})(.*)$/)
+      if (!m) {
+        if (inFence) flags[i] = true
+        continue
+      }
+
+      const marker = m[1]
+      const ch = marker[0]
+      const len = marker.length
+
+      if (!inFence) {
+        inFence = true
+        fenceChar = ch
+        fenceLen = len
+        flags[i] = true
+        continue
+      }
+
+      if (ch === fenceChar && len >= fenceLen) {
+        flags[i] = true
+        inFence = false
+        fenceChar = ''
+        fenceLen = 0
+      } else {
+        flags[i] = true
+      }
+    }
+
+    return flags
+  }
+
+  _clearFenceLineClasses() {
+    if (!this._mde || !this._fenceStyled.size) return
+    const cm = this._mde.codemirror
+
+    for (const lineNo of this._fenceStyled) {
+      const h = cm.getLineHandle(lineNo)
+      if (!h) continue
+      cm.removeLineClass(h, 'wrap', 'mt-codeblock-line')
+      cm.removeLineClass(h, 'wrap', 'mt-codeblock-start')
+      cm.removeLineClass(h, 'wrap', 'mt-codeblock-end')
+    }
+
+    this._fenceStyled.clear()
+  }
+
+  _refreshFenceLineClasses() {
+    if (!this._mde) return
+    const cm = this._mde.codemirror
+    const lineCount = cm.lineCount()
+    const flags = this._collectFenceFlags(cm)
+
+    cm.operation(() => {
+      this._clearFenceLineClasses()
+
+      for (let i = 0; i < lineCount; i++) {
+        if (!flags[i]) continue
+        const h = cm.getLineHandle(i)
+        if (!h) continue
+
+        const isStart = i === 0 || !flags[i - 1]
+        const isEnd = i === lineCount - 1 || !flags[i + 1]
+
+        cm.addLineClass(h, 'wrap', 'mt-codeblock-line')
+        if (isStart) cm.addLineClass(h, 'wrap', 'mt-codeblock-start')
+        if (isEnd) cm.addLineClass(h, 'wrap', 'mt-codeblock-end')
+        this._fenceStyled.add(i)
+      }
+    })
   }
 
   // Render markdown for the preview, resolving relative image sources against
