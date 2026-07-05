@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol } from 'electron'
 import {
   readFile,
   writeFile,
@@ -13,6 +13,26 @@ import { fileURLToPath } from 'node:url'
 import { loadState, saveState, loadSettings, saveSettings } from './store.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+const MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
+  '.avif': 'image/avif',
+}
+function mimeForPath(p) {
+  const dot = p.lastIndexOf('.')
+  return MIME_BY_EXT[dot >= 0 ? p.slice(dot).toLowerCase() : ''] || 'application/octet-stream'
+}
+
+// Custom scheme so the renderer (served over http:// in dev) can load local
+// image files, which Chromium blocks for file:// URLs. Must be registered as
+// privileged BEFORE the app is ready.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'mdfile',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true },
+  },
+])
 
 // Project build/icon.ico (present in dev and copied into packaged resources).
 const iconPath = join(__dirname, '../../build/icon.ico')
@@ -209,6 +229,19 @@ ipcMain.handle('settings:save', (_e, s) => saveSettings(s))
 ipcMain.handle('app:version', () => app.getVersion())
 
 app.whenReady().then(() => {
+  // Serve local files for <img> etc. in the preview. URL form:
+  // mdfile:///D:/path/to/img.jpg  → pathname "/D:/path/to/img.jpg".
+  protocol.handle('mdfile', async (request) => {
+    try {
+      let p = decodeURIComponent(new URL(request.url).pathname)
+      if (p.startsWith('/')) p = p.slice(1)
+      const data = await readFile(p)
+      return new Response(data, { headers: { 'content-type': mimeForPath(p) } })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
+
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

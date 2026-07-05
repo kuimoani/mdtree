@@ -153,6 +153,24 @@ function resolveHref(href, basePath) {
   return 'file:///' + joined.replace(/^\/+/, '')
 }
 
+// Turn a local image href (relative, absolute, or file://) into a URL the
+// renderer is allowed to load: our privileged `mdfile://` scheme (registered in
+// main). Remote (http/https/data) URLs are returned untouched.
+function toImageUrl(href, basePath) {
+  if (/^(https?|data|mdfile):/i.test(href)) return href
+  let abs
+  if (/^file:\/\//i.test(href)) abs = href.replace(/^file:\/\/\/?/i, '')
+  else if (/^[a-zA-Z]:[\\/]/.test(href) || href.startsWith('/') || href.startsWith('\\')) abs = href
+  else {
+    if (!basePath) return href
+    abs = basePath.replace(/[\\/][^\\/]*$/, '') + '/' + href
+  }
+  abs = abs.replace(/\\/g, '/').replace(/^\/+/, '')
+  // Fixed "local" host keeps the drive letter (e.g. D:) in the path rather than
+  // being parsed as the URL authority.
+  return 'mdfile://local/' + encodeURI(abs)
+}
+
 // Relative path from one absolute dir to an absolute target (both may use \ or /).
 function relativePath(fromDir, toPath) {
   const f = fromDir.replace(/\\/g, '/').split('/').filter(Boolean)
@@ -327,7 +345,7 @@ export class MdEditor extends LitElement {
     const rawHtml = this._mde.markdown(plainText)
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html')
     doc.querySelectorAll('img[src]').forEach((img) => {
-      img.setAttribute('src', resolveHref(img.getAttribute('src'), this.path))
+      img.setAttribute('src', toImageUrl(img.getAttribute('src'), this.path))
     })
     return doc.body.innerHTML
   }
