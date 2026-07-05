@@ -50,10 +50,10 @@ const overridesCss = `
     background: #1e1e1e; color: #d4d4d4;
     font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif);
     font-size: var(--md-font-size, 14px);
-    line-height: 1.6;
+    border:none;
   }
   :is(.editor-preview, .editor-preview-side) :is(h1, h2, h3, h4, h5, h6) {
-    color: #e6c07b; font-weight: 600; line-height: 1.3; margin: 0.7em 0 0.35em;
+    color: #e6c07b; font-weight: 700; line-height: 1.3; margin: auto;
   }
   :is(.editor-preview, .editor-preview-side) h1 { font-size: 1.6em; }
   :is(.editor-preview, .editor-preview-side) h2 { font-size: 1.4em; }
@@ -225,6 +225,12 @@ export class MdEditor extends LitElement {
       previewRender: (plainText) => this._renderPreview(plainText),
       // Full EasyMDE tool set, with a custom Save at the very front and the
       // upload-image button rewired to a native local-file picker.
+      renderingConfig: {
+        singleLineBreaks: true,
+        codeSyntaxHighlighting: true,
+        hljs: window.hljs
+      },
+      tabSize: 4,
       toolbar: [
         {
           name: 'save',
