@@ -16,6 +16,7 @@
   "dependencies": {
     "easymde": "^2.21.0",
     "font-awesome": "^4.7.0",
+    "highlight.js": "^10.7.3",
     "lit": "^3.2.0"
   },
   "devDependencies": {

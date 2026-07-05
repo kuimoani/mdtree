@@ -10,6 +10,45 @@ import EasyMDE from 'easymde'
 import easymdeCss from 'easymde/dist/easymde.min.css?inline'
 import faCss from 'font-awesome/css/font-awesome.min.css?inline'
 import 'font-awesome/css/font-awesome.min.css'
+// highlight.js for code-block syntax highlighting in the preview. Pinned to v10
+// because EasyMDE calls the old `hljs.highlight(lang, code)` signature (removed
+// in v11). We use the core build and register a common subset of languages to
+// keep the bundle small (the full build pulls in ~190 languages). The theme CSS
+// is pulled in as a string so it can be adopted into the shadow root (document-
+// level styles don't reach the preview — see note above).
+import hljs from 'highlight.js/lib/core'
+import hljsThemeCss from 'highlight.js/styles/atom-one-dark.css?inline'
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import python from 'highlight.js/lib/languages/python'
+import java from 'highlight.js/lib/languages/java'
+import c from 'highlight.js/lib/languages/c'
+import cpp from 'highlight.js/lib/languages/cpp'
+import csharp from 'highlight.js/lib/languages/csharp'
+import go from 'highlight.js/lib/languages/go'
+import rust from 'highlight.js/lib/languages/rust'
+import php from 'highlight.js/lib/languages/php'
+import ruby from 'highlight.js/lib/languages/ruby'
+import kotlin from 'highlight.js/lib/languages/kotlin'
+import swift from 'highlight.js/lib/languages/swift'
+import bash from 'highlight.js/lib/languages/bash'
+import powershell from 'highlight.js/lib/languages/powershell'
+import sql from 'highlight.js/lib/languages/sql'
+import json from 'highlight.js/lib/languages/json'
+import yaml from 'highlight.js/lib/languages/yaml'
+import xml from 'highlight.js/lib/languages/xml'
+import cssLang from 'highlight.js/lib/languages/css'
+import markdown from 'highlight.js/lib/languages/markdown'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import ini from 'highlight.js/lib/languages/ini'
+import diff from 'highlight.js/lib/languages/diff'
+
+const HLJS_LANGS = {
+  javascript, typescript, python, java, c, cpp, csharp, go, rust, php, ruby,
+  kotlin, swift, bash, powershell, sql, json, yaml, xml, css: cssLang, markdown,
+  dockerfile, ini, diff,
+}
+for (const [name, def] of Object.entries(HLJS_LANGS)) hljs.registerLanguage(name, def)
 
 // Dark-theme + layout overrides layered on top of EasyMDE's light defaults.
 const overridesCss = `
@@ -103,7 +142,7 @@ const overridesCss = `
 // One shared stylesheet (EasyMDE + Font Awesome class rules + overrides) adopted
 // into each editor instance's shadow root.
 const editorSheet = new CSSStyleSheet()
-editorSheet.replaceSync(easymdeCss + '\n' + faCss + '\n' + overridesCss)
+editorSheet.replaceSync(easymdeCss + '\n' + faCss + '\n' + hljsThemeCss + '\n' + overridesCss)
 
 // Resolve an image/link href that may be relative to the open file's directory.
 function resolveHref(href, basePath) {
@@ -228,7 +267,7 @@ export class MdEditor extends LitElement {
       renderingConfig: {
         singleLineBreaks: true,
         codeSyntaxHighlighting: true,
-        hljs: window.hljs
+        hljs,
       },
       tabSize: 4,
       toolbar: [
