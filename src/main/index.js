@@ -46,6 +46,17 @@ ipcMain.handle('dialog:pickFolder', async () => {
   return res.canceled ? null : res.filePaths[0]
 })
 
+// Pick an image file to insert into the editor (EasyMDE upload-image button).
+ipcMain.handle('dialog:pickImage', async () => {
+  const res = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] },
+    ],
+  })
+  return res.canceled ? null : res.filePaths[0]
+})
+
 // Tells the renderer whether a dropped path is a folder or a file.
 ipcMain.handle('fs:pathInfo', async (_e, p) => {
   try {

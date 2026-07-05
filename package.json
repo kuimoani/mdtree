@@ -14,7 +14,8 @@
     "package": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
-    "@toast-ui/editor": "^3.2.2",
+    "easymde": "^2.21.0",
+    "font-awesome": "^4.7.0",
     "lit": "^3.2.0"
   },
   "devDependencies": {

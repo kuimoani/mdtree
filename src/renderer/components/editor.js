@@ -1,15 +1,56 @@
 import { LitElement, html, css } from 'lit'
-import Editor from '@toast-ui/editor'
-// TUI Editor ships global-class CSS. We import it as raw strings (?inline) and
-// adopt it into this component's shadow root so it stays scoped and offline
-// (all icon assets in the CSS are inline data URIs — no external requests).
-import tuiBaseCss from '@toast-ui/editor/dist/toastui-editor.css?inline'
-import tuiDarkCss from '@toast-ui/editor/dist/theme/toastui-editor-dark.css?inline'
-import { getSettings } from './settings.js'
+import EasyMDE from 'easymde'
+// EasyMDE (CodeMirror 5) uses global-class CSS and Font Awesome 4 for its
+// toolbar icons. This component lives inside md-app's shadow DOM, so document-
+// level stylesheets can't reach it — instead we pull the CSS in as strings
+// (?inline) and adopt them into THIS component's own shadow root. Font Awesome
+// is ALSO imported normally so its @font-face registers at the document level
+// (shadow-root @font-face is ignored by the browser, but a document-level font
+// family is still usable inside shadow trees).
+import easymdeCss from 'easymde/dist/easymde.min.css?inline'
+import faCss from 'font-awesome/css/font-awesome.min.css?inline'
+import 'font-awesome/css/font-awesome.min.css'
 
-// Build the TUI stylesheet once and share it across every editor instance.
-const tuiSheet = new CSSStyleSheet()
-tuiSheet.replaceSync(tuiBaseCss + '\n' + tuiDarkCss)
+// Dark-theme + layout overrides layered on top of EasyMDE's light defaults.
+const overridesCss = `
+  .EasyMDEContainer { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+  .EasyMDEContainer .CodeMirror {
+    flex: 1; min-height: 0; height: auto; border: none;
+    background: #1e1e1e; color: #d4d4d4;
+    font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif);
+    font-size: var(--md-font-size, 14px);
+  }
+  .CodeMirror-cursor { border-left-color: #d4d4d4; }
+  .CodeMirror-selected { background: #264f78 !important; }
+  .CodeMirror-focused .CodeMirror-selected { background: #264f78 !important; }
+  .cm-s-easymde .cm-header { color: #e6c07b; }
+  .cm-s-easymde .cm-quote { color: #7f848e; }
+  .cm-s-easymde .cm-link { color: #61afef; }
+  .cm-s-easymde .cm-url { color: #56b6c2; }
+  .cm-s-easymde .cm-comment { color: #98c379; background: #23272e; }
+  .editor-toolbar { background: #252526; border: none; border-bottom: 1px solid #333; opacity: 1; }
+  .editor-toolbar button { color: #cccccc; border: 1px solid transparent; }
+  .editor-toolbar button:hover { background: #2a2d2e; border-color: #3a3a3a; }
+  .editor-toolbar button.active { background: #094771; border-color: #094771; color: #fff; }
+  .editor-toolbar i.separator { border-left: 1px solid #3a3a3a; border-right: none; }
+  .editor-toolbar button.mt-save.mt-dirty { color: #e6c07b; }
+  .editor-preview, .editor-preview-side {
+    background: #1e1e1e; color: #d4d4d4;
+    font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif);
+  }
+  .editor-preview a, .editor-preview-side a { color: #61afef; }
+  .editor-preview pre, .editor-preview code,
+  .editor-preview-side pre, .editor-preview-side code { background: #23272e; color: #d4d4d4; }
+  .editor-preview table td, .editor-preview table th,
+  .editor-preview-side table td, .editor-preview-side table th { border: 1px solid #3a3f4b; }
+  .editor-preview-side { border-left: 1px solid #333; }
+  .editor-statusbar { color: #808080; }
+`
+
+// One shared stylesheet (EasyMDE + Font Awesome class rules + overrides) adopted
+// into each editor instance's shadow root.
+const editorSheet = new CSSStyleSheet()
+editorSheet.replaceSync(easymdeCss + '\n' + faCss + '\n' + overridesCss)
 
 // Resolve an image/link href that may be relative to the open file's directory.
 function resolveHref(href, basePath) {
@@ -20,6 +61,16 @@ function resolveHref(href, basePath) {
   return 'file:///' + joined.replace(/^\/+/, '')
 }
 
+// Relative path from one absolute dir to an absolute target (both may use \ or /).
+function relativePath(fromDir, toPath) {
+  const f = fromDir.replace(/\\/g, '/').split('/').filter(Boolean)
+  const t = toPath.replace(/\\/g, '/').split('/').filter(Boolean)
+  let i = 0
+  while (i < f.length && i < t.length && f[i].toLowerCase() === t[i].toLowerCase()) i++
+  const parts = f.slice(i).map(() => '..').concat(t.slice(i))
+  return parts.length ? parts.join('/') : '.'
+}
+
 export class MdEditor extends LitElement {
   static properties = {
     path: {},
@@ -28,55 +79,30 @@ export class MdEditor extends LitElement {
     dirty: {},
   }
 
+  static styles = css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+    .host {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+    }
+  `
+
   constructor() {
     super()
     this.path = ''
     this.content = ''
     this.gotoLine = 0
     this.dirty = false
-    this._editor = null
+    this._mde = null
     this._saveBtn = null
-    this._appliedTheme = null
+    this._editorPath = null
   }
-
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    .host {
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-    /* Match the app's dark chrome and honour the user's font settings. */
-    .toastui-editor-defaultUI {
-      border: none;
-      height: 100%;
-    }
-    .toastui-editor-contents,
-    .toastui-editor-md-container,
-    .toastui-editor-ww-container {
-      font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif);
-    }
-    .toastui-editor-contents {
-      font-size: var(--md-font-size, 14px);
-    }
-    .toastui-editor-tabs {
-      display: none;
-    }
-    /* Our own Save toolbar button (dirty state turns it amber). */
-    #mt-save-btn {
-      margin: auto;
-      background: none;
-      border: none;
-      font-size: 21px;
-    }
-    #mt-save-btn.dirty {
-      background: #e6c07b;
-    }
-  `
 
   connectedCallback() {
     super.connectedCallback()
@@ -85,115 +111,147 @@ export class MdEditor extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('mdtree-settings', this._onSettings)
-    this._editor?.destroy()
-    this._editor = null
+    this._destroyEditor()
   }
 
-  // Font changes flow through CSS custom properties automatically. A theme
-  // change, however, is a TUI constructor option with no runtime setter, so we
-  // rebuild the editor (preserving the current text + mode) when it changes.
+  // Font settings change the CSS custom properties; CodeMirror needs a remeasure.
   _onSettings = () => {
-    if (this._editor && getSettings().editorTheme !== this._appliedTheme) {
-      this._createEditor({ preserve: true })
-    }
+    this._mde?.codemirror.refresh()
   }
 
   firstUpdated() {
-    // Adopt the TUI stylesheet alongside Lit's own component styles.
+    // Adopt the EasyMDE/Font Awesome stylesheet alongside Lit's own styles.
     this.renderRoot.adoptedStyleSheets = [
       ...this.renderRoot.adoptedStyleSheets,
-      tuiSheet,
+      editorSheet,
     ]
     this._createEditor()
   }
 
   updated(changed) {
-    // Switching tabs swaps both path and content — rebuild the editor.
-    if (changed.has('path') && this._editor) {
+    // Switching tabs swaps path + content — rebuild only when the path actually
+    // changes (guards against the initial firstUpdated/updated double-fire).
+    if (changed.has('path') && this._mde && this.path !== this._editorPath) {
       this._createEditor()
-    } else if (changed.has('gotoLine') && this._editor && this.gotoLine) {
+    } else if (changed.has('gotoLine') && this._mde && this.gotoLine) {
       this._scrollToLine(this.gotoLine)
     }
     if (changed.has('dirty')) {
-      this._saveBtn?.classList.toggle('dirty', !!this.dirty)
+      this._saveBtn?.classList.toggle('mt-dirty', !!this.dirty)
     }
   }
 
-  _createEditor({ preserve = false } = {}) {
-    // When rebuilding for a theme change, keep the live text and current mode
-    // rather than reverting to the (possibly stale) content prop.
-    let initialValue = this.content || ''
-    let editType = 'markdown'
-    if (preserve && this._editor) {
-      initialValue = this._editor.getMarkdown()
-      editType = this._editor.isMarkdownMode() ? 'markdown' : 'wysiwyg'
+  _destroyEditor() {
+    if (this._mde) {
+      try {
+        this._mde.toTextArea()
+      } catch {
+        /* element may already be detached */
+      }
+      this._mde = null
+      this._saveBtn = null
     }
-    if (this._editor) {
-      this._editor.destroy()
-      this._editor = null
-    }
+  }
+
+  _createEditor() {
+    this._destroyEditor()
+    this._editorPath = this.path
     const host = this.renderRoot.querySelector('.host')
     host.replaceChildren()
+    const textarea = document.createElement('textarea')
+    host.appendChild(textarea)
 
-    const themeSetting = getSettings().editorTheme === 'light' ? 'light' : 'dark'
-    this._appliedTheme = themeSetting
-
-    // Custom Save button injected into the toolbar; Ctrl+S is handled globally
-    // by the app, this mirrors it and reflects the dirty state.
-    const saveBtn = document.createElement('button')
-    saveBtn.id = 'mt-save-btn'
-    saveBtn.type = 'button'
-    saveBtn.className = 'mt-save-btn' + (this.dirty ? ' dirty' : '')
-    saveBtn.textContent = '💾'
-    saveBtn.addEventListener('click', () => {
-      this.dispatchEvent(new CustomEvent('request-save'))
-    })
-    this._saveBtn = saveBtn
-
-    this._editor = new Editor({
-      el: host,
-      height: '100%',
-      theme: themeSetting,
-      initialEditType: editType,
-      // 'tab' keeps Markdown mode to just the editor (no side-by-side preview).
-      previewStyle: 'tab',
-      usageStatistics: false,
-      initialValue,
-      toolbarItems: [
-        [{ name: 'save', el: saveBtn, tooltip: 'Save (Ctrl+S)' }],
-        ['heading', 'bold', 'italic', 'strike'],
-        ['hr', 'quote'],
-        ['ul', 'ol', 'task', 'indent', 'outdent'],
-        ['table', 'image', 'link'],
-        ['code', 'codeblock'],
-      ],
-      useCommandShortcut: false,
-      customHTMLRenderer: {
-        // Resolve relative image sources against the open file's directory.
-        image: (node, context) => {
-          const { origin, entering } = context
-          const result = origin()
-          if (entering && result.attributes) {
-            result.attributes.src = resolveHref(node.destination, this.path)
-          }
-          return result
+    this._mde = new EasyMDE({
+      element: textarea,
+      initialValue: this.content || '',
+      autofocus: false,
+      spellChecker: false,
+      autoDownloadFontAwesome: false, // we bundle Font Awesome ourselves
+      status: ['lines', 'words', 'cursor'],
+      sideBySideFullscreen: false,
+      previewRender: (plainText) => this._renderPreview(plainText),
+      // Full EasyMDE tool set, with a custom Save at the very front and the
+      // upload-image button rewired to a native local-file picker.
+      toolbar: [
+        {
+          name: 'save',
+          className: 'fa fa-save mt-save',
+          title: 'Save (Ctrl+S)',
+          action: () => this.dispatchEvent(new CustomEvent('request-save')),
         },
-      },
+        '|',
+        'bold', 'italic', 'strikethrough', 'heading',
+        // 'heading-smaller', 'heading-bigger', 'heading-1', 'heading-2', 'heading-3',
+        '|',
+        'code', 'quote', 'unordered-list', 'ordered-list', 'check-list', 'clean-block',
+        '|',
+        'link', 'image',
+        {
+          name: 'upload-image',
+          className: 'fa fa-upload',
+          title: 'Insert local image',
+          action: () => this._pickImage(),
+        },
+        'table', 'horizontal-rule',
+        '|',
+        'preview', 'side-by-side', // 'fullscreen',
+        '|',
+        {
+          name: 'guide',
+          className: 'fa fa-question-circle',
+          title: 'Markdown guide',
+          action: () => window.api.openExternal('https://www.markdownguide.org/basic-syntax/'),
+        },
+        '|',
+        'undo', 'redo',
+      ],
     })
 
-    this._editor.on('change', () => {
+    this._saveBtn = host.querySelector('.editor-toolbar .mt-save')
+    if (this.dirty) this._saveBtn?.classList.add('mt-dirty')
+
+    this._mde.codemirror.on('change', () => {
       this.dispatchEvent(
-        new CustomEvent('doc-change', {
-          detail: { content: this._editor.getMarkdown() },
-        })
+        new CustomEvent('doc-change', { detail: { content: this._mde.value() } })
       )
     })
 
-    // Open links from the rendered content: external URLs in the browser,
+    // Open links from the rendered preview: external URLs in the browser,
     // local .md files as new tabs.
     host.addEventListener('click', this._onContentClick, true)
 
     if (this.gotoLine) this._scrollToLine(this.gotoLine)
+  }
+
+  // Render markdown for the preview, resolving relative image sources against
+  // the open file's directory.
+  _renderPreview(plainText) {
+    const rawHtml = this._mde.markdown(plainText)
+    const doc = new DOMParser().parseFromString(rawHtml, 'text/html')
+    doc.querySelectorAll('img[src]').forEach((img) => {
+      img.setAttribute('src', resolveHref(img.getAttribute('src'), this.path))
+    })
+    return doc.body.innerHTML
+  }
+
+  async _pickImage() {
+    const picked = await window.api.pickImage()
+    if (!picked) return
+    const cm = this._mde.codemirror
+    const name = picked.replace(/[\\/]+$/, '').split(/[\\/]/).pop()
+    let insert
+    if (this.path) {
+      const fileDir = this.path.replace(/[\\/][^\\/]*$/, '')
+      // Different Windows drive → fall back to an absolute file URL.
+      insert =
+        fileDir.slice(0, 2).toLowerCase() !== picked.slice(0, 2).toLowerCase()
+          ? 'file:///' + picked.replace(/\\/g, '/').replace(/^\/+/, '')
+          : relativePath(fileDir, picked)
+    } else {
+      insert = 'file:///' + picked.replace(/\\/g, '/').replace(/^\/+/, '')
+    }
+    cm.replaceSelection(`![${name}](${insert})`)
+    cm.focus()
   }
 
   _onContentClick = (e) => {
@@ -216,13 +274,15 @@ export class MdEditor extends LitElement {
     }
   }
 
-  // Best-effort jump to a source line. Only meaningful in markdown mode; in the
-  // default WYSIWYG mode TUI has no line concept, so switch modes to honour it.
+  // Jump to a source line (sidebar search result). EasyMDE is always a source
+  // editor, so this is exact.
   _scrollToLine(n) {
-    if (!this._editor || n < 1) return
-    if (!this._editor.isMarkdownMode()) this._editor.changeMode('markdown', true)
-    this._editor.setSelection([n, 1], [n, 1])
-    this._editor.focus()
+    const cm = this._mde?.codemirror
+    if (!cm || n < 1) return
+    const line = Math.min(n - 1, cm.lineCount() - 1)
+    cm.setCursor({ line, ch: 0 })
+    cm.scrollIntoView({ line, ch: 0 }, 120)
+    cm.focus()
   }
 
   render() {
