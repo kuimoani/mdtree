@@ -14,7 +14,7 @@ import {
   WidgetType,
   ViewPlugin,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import {
   syntaxHighlighting,
@@ -150,22 +150,46 @@ function parseTable(raw) {
 }
 
 // Renders a GFM table as an actual <table> in place of the raw markdown.
+// Clicking any cell moves the CodeMirror cursor to that row's source line,
+// which deactivates the widget and lets the user edit the raw text.
 class TableWidget extends WidgetType {
-  constructor(raw) {
+  constructor(raw, from) {
     super()
     this.raw = raw
+    this.from = from  // doc position of the first character of the table
     this.parsed = parseTable(raw)
   }
   eq(o) {
-    return o.raw === this.raw
+    // Include `from` so the widget rebuilds (and its click closure refreshes)
+    // whenever the table shifts due to edits above it.
+    return o.raw === this.raw && o.from === this.from
   }
-  toDOM() {
+  toDOM(view) {
     if (!this.parsed) {
       const span = document.createElement('span')
       span.textContent = this.raw
       return span
     }
     const { header, aligns, rows } = this.parsed
+
+    // Compute byte offsets for each source line relative to this.from so
+    // clicks can move the cursor to the correct row.
+    const srcLines = this.raw.split(/\r?\n/)
+    const lineOffsets = []
+    let off = 0
+    for (const line of srcLines) {
+      lineOffsets.push(off)
+      off += line.length + 1 // +1 for the newline
+    }
+    const moveTo = (srcLineIdx) => {
+      const lineOff = lineOffsets[Math.min(srcLineIdx, lineOffsets.length - 1)] ?? 0
+      view.dispatch({
+        selection: { anchor: this.from + lineOff },
+        scrollIntoView: true,
+      })
+      view.focus()
+    }
+
     const table = document.createElement('table')
     table.className = 'cm-mdtable'
     const thead = document.createElement('thead')
@@ -174,17 +198,22 @@ class TableWidget extends WidgetType {
       const th = document.createElement('th')
       th.textContent = h
       if (aligns[i]) th.style.textAlign = aligns[i]
+      th.style.cursor = 'text'
+      th.addEventListener('click', (e) => { e.stopPropagation(); moveTo(0) })
       htr.appendChild(th)
     })
     thead.appendChild(htr)
     table.appendChild(thead)
     const tbody = document.createElement('tbody')
-    rows.forEach((row) => {
+    rows.forEach((row, rowIdx) => {
       const tr = document.createElement('tr')
       row.forEach((cell, i) => {
         const td = document.createElement('td')
         td.textContent = cell
         if (aligns[i]) td.style.textAlign = aligns[i]
+        td.style.cursor = 'text'
+        // data rows start at srcLine index 2 (header=0, separator=1)
+        td.addEventListener('click', (e) => { e.stopPropagation(); moveTo(rowIdx + 2) })
         tr.appendChild(td)
       })
       tbody.appendChild(tr)
@@ -192,6 +221,8 @@ class TableWidget extends WidgetType {
     table.appendChild(tbody)
     return table
   }
+  // We install our own click listeners, so let CodeMirror ignore widget events.
+  ignoreEvent() { return true }
 }
 
 // Resolve an image/link href that may be relative to the open file's directory.
@@ -386,7 +417,7 @@ function buildTableDecorations(state) {
         builder.add(
           firstLine.from,
           lastLine.to,
-          Decoration.replace({ widget: new TableWidget(raw), block: true })
+          Decoration.replace({ widget: new TableWidget(raw, firstLine.from), block: true })
         )
       }
       return false
@@ -635,7 +666,7 @@ export class MdEditor extends LitElement {
       extensions: [
         this._lineNumbersCompartment.of(getSettings().showLineNumbers ? lineNumbers() : []),
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         highlightSelectionMatches(),
         markdown({ base: markdownLanguage, extensions: GFM }),
         syntaxHighlighting(mdHighlight),
