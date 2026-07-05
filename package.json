@@ -14,16 +14,7 @@
     "package": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
-    "@codemirror/commands": "^6.6.0",
-    "@codemirror/lang-markdown": "^6.3.0",
-    "@codemirror/search": "^6.5.6",
-    "@codemirror/language": "^6.10.2",
-    "@codemirror/state": "^6.4.1",
-    "@codemirror/theme-one-dark": "^6.1.2",
-    "@codemirror/view": "^6.34.0",
-    "@lezer/highlight": "^1.2.1",
-    "@lezer/markdown": "^1.3.1",
-    "codemirror": "^6.0.1",
+    "@toast-ui/editor": "^3.2.2",
     "lit": "^3.2.0"
   },
   "devDependencies": {
@@ -43,7 +34,11 @@
       "output": "release",
       "buildResources": "build"
     },
-    "files": ["out/**/*", "build/icon.ico", "package.json"],
+    "files": [
+      "out/**/*",
+      "build/icon.ico",
+      "package.json"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": "nsis"
