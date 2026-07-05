@@ -160,8 +160,14 @@ export function openSettingsDialog(current, version, initialTab = 'general') {
           <section class="mt-panel">
             <div class="pane" data-pane="general">
               <h3>General</h3>
-              <label class="mt-check">
+              <label class="mt-check" style="display:none;">
                 <input type="checkbox" class="ln" /> Show line numbers
+              </label>
+              <label class="mt-field" style="display:none;">Editor theme
+                <select class="theme">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                </select>
               </label>
             </div>
             <div class="pane" data-pane="font">
@@ -192,9 +198,11 @@ export function openSettingsDialog(current, version, initialTab = 'general') {
       </div>`
 
     const ln = overlay.querySelector('.ln')
+    const theme = overlay.querySelector('.theme')
     const ff = overlay.querySelector('.ff')
     const fs = overlay.querySelector('.fs')
     ln.checked = current.showLineNumbers !== false
+    theme.value = current.editorTheme === 'light' ? 'light' : 'dark'
     ff.value = current.fontFamily || ''
     fs.value = current.fontSize || 14
 
@@ -219,6 +227,7 @@ export function openSettingsDialog(current, version, initialTab = 'general') {
     overlay.querySelector('.ok').onclick = () =>
       close({
         showLineNumbers: ln.checked,
+        editorTheme: theme.value === 'light' ? 'light' : 'dark',
         fontFamily: ff.value.trim(),
         fontSize: Number(fs.value) || 14,
       })

@@ -7,6 +7,7 @@ const DEFAULTS = {
   showLineNumbers: true,
   fontFamily: '',
   fontSize: 14,
+  editorTheme: 'dark', // TUI Editor theme: 'dark' | 'light'
 }
 const FALLBACK_FONT = "'Segoe UI', system-ui, sans-serif"
 

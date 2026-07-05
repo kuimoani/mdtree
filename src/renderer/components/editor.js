@@ -36,6 +36,7 @@ export class MdEditor extends LitElement {
     this.dirty = false
     this._editor = null
     this._saveBtn = null
+    this._appliedTheme = null
   }
 
   static styles = css`
@@ -62,17 +63,18 @@ export class MdEditor extends LitElement {
     .toastui-editor-contents {
       font-size: var(--md-font-size, 14px);
     }
+    .toastui-editor-tabs {
+      display: none;
+    }
     /* Our own Save toolbar button (dirty state turns it amber). */
-    .mt-save-btn {
+    #mt-save-btn {
+      margin: auto;
       background: none;
       border: none;
-      cursor: pointer;
-      font-size: 15px;
-      line-height: 1;
-      color: #cccccc;
+      font-size: 21px;
     }
-    .mt-save-btn.dirty {
-      color: #e6c07b;
+    #mt-save-btn.dirty {
+      background: #e6c07b;
     }
   `
 
@@ -87,9 +89,13 @@ export class MdEditor extends LitElement {
     this._editor = null
   }
 
-  // Font settings live in CSS custom properties on :root; nudge a reflow.
+  // Font changes flow through CSS custom properties automatically. A theme
+  // change, however, is a TUI constructor option with no runtime setter, so we
+  // rebuild the editor (preserving the current text + mode) when it changes.
   _onSettings = () => {
-    this._editor?.getEditorElements?.()
+    if (this._editor && getSettings().editorTheme !== this._appliedTheme) {
+      this._createEditor({ preserve: true })
+    }
   }
 
   firstUpdated() {
@@ -113,7 +119,15 @@ export class MdEditor extends LitElement {
     }
   }
 
-  _createEditor() {
+  _createEditor({ preserve = false } = {}) {
+    // When rebuilding for a theme change, keep the live text and current mode
+    // rather than reverting to the (possibly stale) content prop.
+    let initialValue = this.content || ''
+    let editType = 'markdown'
+    if (preserve && this._editor) {
+      initialValue = this._editor.getMarkdown()
+      editType = this._editor.isMarkdownMode() ? 'markdown' : 'wysiwyg'
+    }
     if (this._editor) {
       this._editor.destroy()
       this._editor = null
@@ -121,9 +135,13 @@ export class MdEditor extends LitElement {
     const host = this.renderRoot.querySelector('.host')
     host.replaceChildren()
 
+    const themeSetting = getSettings().editorTheme === 'light' ? 'light' : 'dark'
+    this._appliedTheme = themeSetting
+
     // Custom Save button injected into the toolbar; Ctrl+S is handled globally
     // by the app, this mirrors it and reflects the dirty state.
     const saveBtn = document.createElement('button')
+    saveBtn.id = 'mt-save-btn'
     saveBtn.type = 'button'
     saveBtn.className = 'mt-save-btn' + (this.dirty ? ' dirty' : '')
     saveBtn.textContent = '💾'
@@ -135,19 +153,21 @@ export class MdEditor extends LitElement {
     this._editor = new Editor({
       el: host,
       height: '100%',
-      theme: 'dark',
-      initialEditType: 'wysiwyg',
-      previewStyle: 'vertical',
+      theme: themeSetting,
+      initialEditType: editType,
+      // 'tab' keeps Markdown mode to just the editor (no side-by-side preview).
+      previewStyle: 'tab',
       usageStatistics: false,
-      initialValue: this.content || '',
+      initialValue,
       toolbarItems: [
+        [{ name: 'save', el: saveBtn, tooltip: 'Save (Ctrl+S)' }],
         ['heading', 'bold', 'italic', 'strike'],
         ['hr', 'quote'],
         ['ul', 'ol', 'task', 'indent', 'outdent'],
         ['table', 'image', 'link'],
         ['code', 'codeblock'],
-        [{ name: 'save', el: saveBtn, tooltip: 'Save (Ctrl+S)' }],
       ],
+      useCommandShortcut: false,
       customHTMLRenderer: {
         // Resolve relative image sources against the open file's directory.
         image: (node, context) => {
