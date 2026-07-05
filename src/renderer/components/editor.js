@@ -24,6 +24,14 @@ const overridesCss = `
   .CodeMirror-selected { background: #264f78 !important; }
   .CodeMirror-focused .CodeMirror-selected { background: #264f78 !important; }
   .cm-s-easymde .cm-header { color: #e6c07b; }
+  /* Match the source-view heading sizes to the preview (em-based off the base
+     font size), overriding EasyMDE's viewport-relative calc() defaults. */
+  .cm-s-easymde .cm-header-1 { font-size: 1.6em; line-height: 1.3; }
+  .cm-s-easymde .cm-header-2 { font-size: 1.4em; line-height: 1.3; }
+  .cm-s-easymde .cm-header-3 { font-size: 1.2em; line-height: 1.3; }
+  .cm-s-easymde .cm-header-4,
+  .cm-s-easymde .cm-header-5,
+  .cm-s-easymde .cm-header-6 { font-size: 1.05em; line-height: 1.3; }
   .cm-s-easymde .cm-quote { color: #7f848e; }
   .cm-s-easymde .cm-link { color: #61afef; }
   .cm-s-easymde .cm-url { color: #56b6c2; }
@@ -34,17 +42,62 @@ const overridesCss = `
   .editor-toolbar button.active { background: #094771; border-color: #094771; color: #fff; }
   .editor-toolbar i.separator { border-left: 1px solid #3a3a3a; border-right: none; }
   .editor-toolbar button.mt-save.mt-dirty { color: #e6c07b; }
-  .editor-preview, .editor-preview-side {
+  /* Preview: mirror the editor's font size + colour palette so toggling between
+     source and preview looks consistent. Sizes are em-based off --md-font-size
+     so they scale with the user's font setting, exactly like the editor. */
+  :is(.editor-preview, .editor-preview-side) {
+    padding: 10px;
     background: #1e1e1e; color: #d4d4d4;
     font-family: var(--md-font-family, 'Segoe UI', system-ui, sans-serif);
+    font-size: var(--md-font-size, 14px);
+    line-height: 1.6;
   }
-  .editor-preview a, .editor-preview-side a { color: #61afef; }
-  .editor-preview pre, .editor-preview code,
-  .editor-preview-side pre, .editor-preview-side code { background: #23272e; color: #d4d4d4; }
-  .editor-preview table td, .editor-preview table th,
-  .editor-preview-side table td, .editor-preview-side table th { border: 1px solid #3a3f4b; }
-  .editor-preview-side { border-left: 1px solid #333; }
+  :is(.editor-preview, .editor-preview-side) :is(h1, h2, h3, h4, h5, h6) {
+    color: #e6c07b; font-weight: 600; line-height: 1.3; margin: 0.7em 0 0.35em;
+  }
+  :is(.editor-preview, .editor-preview-side) h1 { font-size: 1.6em; }
+  :is(.editor-preview, .editor-preview-side) h2 { font-size: 1.4em; }
+  :is(.editor-preview, .editor-preview-side) h3 { font-size: 1.2em; }
+  :is(.editor-preview, .editor-preview-side) :is(h4, h5, h6) { font-size: 1.05em; }
+  :is(.editor-preview, .editor-preview-side) a { color: #61afef; }
+  :is(.editor-preview, .editor-preview-side) blockquote {
+    color: #7f848e; border-left: 3px solid #3a3f4b; margin: 0.5em 0; padding: 0 0 0 12px;
+  }
+  :is(.editor-preview, .editor-preview-side) code {
+    background: #23272e; color: #98c379; padding: 1px 5px; border-radius: 3px;
+    font-family: 'Consolas', monospace; font-size: 0.95em;
+  }
+  :is(.editor-preview, .editor-preview-side) pre {
+    background: #23272e; color: #d4d4d4; padding: 10px; border-radius: 4px; overflow: auto;
+  }
+  :is(.editor-preview, .editor-preview-side) pre code {
+    background: none; color: inherit; padding: 0; font-size: 1em;
+  }
+  :is(.editor-preview, .editor-preview-side) hr { border: none; border-top: 1px solid #3a3f4b; }
+  :is(.editor-preview, .editor-preview-side) img { max-width: 100%; }
+  :is(.editor-preview, .editor-preview-side) table { border-collapse: collapse; }
+  :is(.editor-preview, .editor-preview-side) :is(td, th) { border: 1px solid #3a3f4b; padding: 4px 10px; }
+  :is(.editor-preview, .editor-preview-side) th { background: #2a2f3a; }
+  .editor-preview-side { border-left: 1px solid #333; width:auto; }
   .editor-statusbar { color: #808080; }
+  /* Side-by-side (non-fullscreen): EasyMDE's default flex-wrap layout leaves
+     both panes at content height with no internal scroll. Lay it out as a grid
+     — toolbar / [editor | preview] / statusbar — so the middle row is bounded
+     (minmax(0,1fr)) and each pane scrolls independently. */
+  .EasyMDEContainer.sided--no-fullscreen {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "toolbar toolbar" "editor preview" "status status";
+  }
+  .EasyMDEContainer.sided--no-fullscreen .editor-toolbar { grid-area: toolbar; }
+  .EasyMDEContainer.sided--no-fullscreen .CodeMirror-sided {
+    grid-area: editor; width: auto !important; height: 100%; min-height: 0;
+  }
+  .EasyMDEContainer.sided--no-fullscreen .editor-preview-active-side {
+    grid-area: preview; height: 100%; min-height: 0; overflow: auto;
+  }
+  .EasyMDEContainer.sided--no-fullscreen .editor-statusbar { grid-area: status; }
 `
 
 // One shared stylesheet (EasyMDE + Font Awesome class rules + overrides) adopted
