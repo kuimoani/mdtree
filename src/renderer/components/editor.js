@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import EasyMDE from 'easymde'
+import { getSettings, setSettings } from './settings.js'
 // EasyMDE (CodeMirror 5) uses global-class CSS and Font Awesome 4 for its
 // toolbar icons. This component lives inside md-app's shadow DOM, so document-
 // level stylesheets can't reach it — instead we pull the CSS in as strings
@@ -112,6 +113,7 @@ const overridesCss = `
   :is(.editor-preview, .editor-preview-side) pre code {
     background: none; color: inherit; padding: 0; font-size: 1em;
   }
+  :is(.editor-preview, .editor-preview-side) ol, ul { padding-inline-start: 20px; }
   :is(.editor-preview, .editor-preview-side) hr { border: none; border-top: 1px solid #3a3f4b; }
   :is(.editor-preview, .editor-preview-side) img { max-width: 100%; }
   :is(.editor-preview, .editor-preview-side) table { border-collapse: collapse; }
@@ -225,8 +227,11 @@ export class MdEditor extends LitElement {
   }
 
   // Font settings change the CSS custom properties; CodeMirror needs a remeasure.
+  // Also re-apply the persisted view mode: settings may finish loading from disk
+  // after the editor was already built (in the default 'edit' view).
   _onSettings = () => {
     this._mde?.codemirror.refresh()
+    this._applyViewMode()
   }
 
   firstUpdated() {
@@ -310,7 +315,24 @@ export class MdEditor extends LitElement {
         },
         'table', 'horizontal-rule',
         '|',
-        'preview', 'side-by-side', // 'fullscreen',
+        {
+          name: 'preview',
+          className: 'fa fa-eye no-disable',
+          title: 'Toggle preview',
+          action: (editor) => {
+            EasyMDE.togglePreview(editor)
+            this._recordViewMode()
+          },
+        },
+        {
+          name: 'side-by-side',
+          className: 'fa fa-columns no-disable no-mobile',
+          title: 'Toggle side-by-side',
+          action: (editor) => {
+            EasyMDE.toggleSideBySide(editor)
+            this._recordViewMode()
+          },
+        },
         '|',
         {
           name: 'guide',
@@ -336,7 +358,35 @@ export class MdEditor extends LitElement {
     // local .md files as new tabs.
     host.addEventListener('click', this._onContentClick, true)
 
+    this._applyViewMode()
     if (this.gotoLine) this._scrollToLine(this.gotoLine)
+  }
+
+  // Remember the current view (persisted in settings) so it carries over to the
+  // next document and across restarts. EasyMDE activates side-by-side on a
+  // setTimeout(1ms), so read the settled state on a later tick.
+  _recordViewMode() {
+    setTimeout(() => {
+      if (!this._mde) return
+      const mode = this._mde.isSideBySideActive()
+        ? 'sidebyside'
+        : this._mde.isPreviewActive()
+        ? 'preview'
+        : 'edit'
+      if (getSettings().viewMode !== mode) setSettings({ viewMode: mode })
+    }, 20)
+  }
+
+  // Restore the persisted view on a freshly built editor (which starts in the
+  // plain 'edit' view). Idempotent — the isActive guards prevent re-toggling.
+  _applyViewMode() {
+    if (!this._mde) return
+    const mode = getSettings().viewMode
+    if (mode === 'sidebyside' && !this._mde.isSideBySideActive()) {
+      EasyMDE.toggleSideBySide(this._mde)
+    } else if (mode === 'preview' && !this._mde.isPreviewActive()) {
+      EasyMDE.togglePreview(this._mde)
+    }
   }
 
   // Render markdown for the preview, resolving relative image sources against

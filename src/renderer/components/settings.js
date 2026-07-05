@@ -8,6 +8,7 @@ const DEFAULTS = {
   fontFamily: '',
   fontSize: 14,
   editorTheme: 'dark', // TUI Editor theme: 'dark' | 'light'
+  viewMode: 'edit', // last editor view: 'edit' | 'preview' | 'sidebyside'
 }
 const FALLBACK_FONT = "'Segoe UI', system-ui, sans-serif"
 
