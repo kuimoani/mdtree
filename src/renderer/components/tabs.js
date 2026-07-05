@@ -58,6 +58,12 @@ export class MdTabs extends LitElement {
           class="tab ${i === this.activeIndex ? 'active' : ''}"
           @click=${() =>
             this.dispatchEvent(new CustomEvent('select-tab', { detail: { index: i } }))}
+          @auxclick=${(e) => {
+            if (e.button === 1) {
+              e.preventDefault()
+              this.dispatchEvent(new CustomEvent('close-tab', { detail: { index: i } }))
+            }
+          }}
         >
           <span>${t.name}</span>
           ${t.dirty ? html`<span class="dot">●</span>` : ''}
