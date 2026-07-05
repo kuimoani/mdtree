@@ -282,8 +282,16 @@ export class MdEditor extends LitElement {
       autofocus: false,
       spellChecker: false,
       autoDownloadFontAwesome: false, // we bundle Font Awesome ourselves
-      status: ['lines', 'words', 'cursor'],
+      status: ['upload-image', 'lines', 'words', 'cursor'],
       sideBySideFullscreen: false,
+      // Paste-from-clipboard and drag&drop image support: EasyMDE intercepts the
+      // paste/drop events and hands each image file to our save function, which
+      // stores it next to the document and returns a relative path to insert.
+      uploadImage: true,
+      imageMaxSize: 1024 * 1024 * 25,
+      imageAccept: 'image/png, image/jpeg, image/gif, image/webp, image/bmp, image/svg+xml, image/avif',
+      imageUploadFunction: (file, onSuccess, onError) => this._saveImageFile(file, onSuccess, onError),
+      errorCallback: (msg) => console.warn('EasyMDE image:', msg), // don't alert()
       previewRender: (plainText) => this._renderPreview(plainText),
       // Full EasyMDE tool set, with a custom Save at the very front and the
       // upload-image button rewired to a native local-file picker.
@@ -357,6 +365,10 @@ export class MdEditor extends LitElement {
     // Open links from the rendered preview: external URLs in the browser,
     // local .md files as new tabs.
     host.addEventListener('click', this._onContentClick, true)
+    // Move the cursor to the drop location before EasyMDE inserts the image, so
+    // dropped images land where the user dropped them (not at the top). Capture
+    // phase runs before EasyMDE's own (bubble-phase) drop handler.
+    host.addEventListener('drop', this._onEditorDrop, true)
 
     this._applyViewMode()
     if (this.gotoLine) this._scrollToLine(this.gotoLine)
@@ -405,19 +417,75 @@ export class MdEditor extends LitElement {
     if (!picked) return
     const cm = this._mde.codemirror
     const name = picked.replace(/[\\/]+$/, '').split(/[\\/]/).pop()
-    let insert
-    if (this.path) {
-      const fileDir = this.path.replace(/[\\/][^\\/]*$/, '')
-      // Different Windows drive → fall back to an absolute file URL.
-      insert =
-        fileDir.slice(0, 2).toLowerCase() !== picked.slice(0, 2).toLowerCase()
-          ? 'file:///' + picked.replace(/\\/g, '/').replace(/^\/+/, '')
-          : relativePath(fileDir, picked)
-    } else {
-      insert = 'file:///' + picked.replace(/\\/g, '/').replace(/^\/+/, '')
-    }
-    cm.replaceSelection(`![${name}](${insert})`)
+    cm.replaceSelection(`![${name}](${this._referencePath(picked)})`)
     cm.focus()
+  }
+
+  // A markdown src that references an existing file in place: a relative path
+  // when it shares the document's drive, otherwise an absolute file URL.
+  _referencePath(absPath) {
+    const asFileUrl = 'file:///' + absPath.replace(/\\/g, '/').replace(/^\/+/, '')
+    if (!this.path) return encodeURI(asFileUrl)
+    const fileDir = this.path.replace(/[\\/][^\\/]*$/, '')
+    if (fileDir.slice(0, 2).toLowerCase() !== absPath.slice(0, 2).toLowerCase()) {
+      return encodeURI(asFileUrl)
+    }
+    return encodeURI(relativePath(fileDir, absPath))
+  }
+
+  // Before EasyMDE inserts a dropped image, place the cursor at the drop point.
+  _onEditorDrop = (e) => {
+    if (!this._mde || !e.dataTransfer?.files?.length) return
+    const cm = this._mde.codemirror
+    try {
+      cm.setCursor(cm.coordsChar({ left: e.clientX, top: e.clientY }, 'window'))
+    } catch {
+      /* coords outside the editor — leave the cursor where it is */
+    }
+  }
+
+  // Called by imageUploadFunction for each pasted/dropped image.
+  //  • A dropped file already on disk (Electron sets file.path) → reference it in
+  //    place, no copy.
+  //  • A pasted (in-memory) image → save it next to the document under assets/.
+  async _saveImageFile(file, onSuccess, onError) {
+    try {
+      const isImage =
+        /^image\//.test(file.type) ||
+        /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(file.name || file.path || '')
+      if (!isImage) {
+        onError('Not an image file.')
+        return
+      }
+
+      // Dropped existing file → reference in place.
+      if (file.path) {
+        onSuccess(this._referencePath(file.path))
+        return
+      }
+
+      // Pasted image → persist under the document's assets/ folder.
+      if (!this.path) {
+        onError('Cannot add image: the document has no folder yet.')
+        return
+      }
+      const buf = new Uint8Array(await file.arrayBuffer())
+      let name = (file.name || '').trim()
+      if (!name || !/\.[a-z0-9]+$/i.test(name)) {
+        const ext = (file.type.split('/')[1] || 'png').replace('svg+xml', 'svg').replace('jpeg', 'jpg')
+        name = `image-${Date.now()}.${ext}`
+      }
+      const abs = await window.api.saveImage(this.path, buf, name)
+      if (!abs) {
+        onError('Failed to save image.')
+        return
+      }
+      const fileDir = this.path.replace(/[\\/][^\\/]*$/, '')
+      // encodeURI so spaces etc. in the generated path stay valid in markdown.
+      onSuccess(encodeURI(relativePath(fileDir, abs)))
+    } catch {
+      onError('Failed to save image.')
+    }
   }
 
   _onContentClick = (e) => {

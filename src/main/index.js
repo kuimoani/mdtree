@@ -8,7 +8,7 @@ import {
   stat,
 } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join, dirname, basename } from 'node:path'
+import { join, dirname, basename, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadState, saveState, loadSettings, saveSettings } from './store.js'
 
@@ -131,6 +131,21 @@ ipcMain.handle('fs:readFile', async (_e, filePath) => {
 ipcMain.handle('fs:writeFile', async (_e, filePath, content) => {
   await writeFile(filePath, content, 'utf8')
   return true
+})
+
+// Save a pasted/dropped image next to the open file (in an "assets" subfolder),
+// avoiding name collisions. Returns the absolute path written.
+ipcMain.handle('fs:saveImage', async (_e, baseFilePath, data, suggestedName) => {
+  const dir = join(dirname(baseFilePath), 'assets')
+  await mkdir(dir, { recursive: true })
+  let name = (suggestedName || 'image.png').replace(/[\\/:*?"<>|]/g, '_')
+  if (!extname(name)) name += '.png'
+  const ext = extname(name)
+  const stem = name.slice(0, name.length - ext.length)
+  let target = join(dir, name)
+  for (let i = 1; existsSync(target); i++) target = join(dir, `${stem}-${i}${ext}`)
+  await writeFile(target, Buffer.from(data))
+  return target
 })
 
 ipcMain.handle('fs:createFile', async (_e, dirPath, name) => {

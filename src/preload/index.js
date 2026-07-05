@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   readDir: (path, showAllFolders) => ipcRenderer.invoke('fs:readDir', path, showAllFolders),
   readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
   writeFile: (path, content) => ipcRenderer.invoke('fs:writeFile', path, content),
+  saveImage: (baseFilePath, data, name) => ipcRenderer.invoke('fs:saveImage', baseFilePath, data, name),
   createFile: (dir, name) => ipcRenderer.invoke('fs:createFile', dir, name),
   createFolder: (dir, name) => ipcRenderer.invoke('fs:createFolder', dir, name),
   rename: (oldPath, newName) => ipcRenderer.invoke('fs:rename', oldPath, newName),
