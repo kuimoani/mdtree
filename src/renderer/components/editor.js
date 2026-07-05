@@ -151,6 +151,22 @@ const overridesCss = `
   :is(.editor-preview, .editor-preview-side) ol, ul { padding-inline-start: 20px; }
   :is(.editor-preview, .editor-preview-side) hr { border: none; border-top: 1px solid #3a3f4b; }
   :is(.editor-preview, .editor-preview-side) img { max-width: 100%; }
+  /* Placeholder shown in place of an image that failed to load. */
+  :is(.editor-preview, .editor-preview-side) .mt-img-broken {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 6px 12px;
+    border: 1px dashed #b5544a;
+    border-radius: 4px;
+    background: #2a1e1e;
+    color: #e0a39d;
+    font-size: 0.9em;
+    font-style: italic;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
   :is(.editor-preview, .editor-preview-side) table { border-collapse: collapse; }
   :is(.editor-preview, .editor-preview-side) :is(td, th) { border: 1px solid #3a3f4b; padding: 4px 10px; }
   :is(.editor-preview, .editor-preview-side) th { background: #2a2f3a; }
@@ -413,6 +429,9 @@ export class MdEditor extends LitElement {
     // dropped images land where the user dropped them (not at the top). Capture
     // phase runs before EasyMDE's own (bubble-phase) drop handler.
     host.addEventListener('drop', this._onEditorDrop, true)
+    // Replace preview images that fail to load with a visible placeholder.
+    // `error` doesn't bubble, but capture-phase reaches it from the host.
+    host.addEventListener('error', this._onImgError, true)
 
     this._applyViewMode()
     if (this.gotoLine) this._scrollToLine(this.gotoLine)
@@ -558,6 +577,19 @@ export class MdEditor extends LitElement {
       return encodeURI(asFileUrl)
     }
     return encodeURI(relativePath(fileDir, absPath))
+  }
+
+  // Swap a broken preview image for a clear "not found" placeholder so a missing
+  // file is obvious instead of just rendering nothing. Re-fires harmlessly on
+  // each preview re-render (EasyMDE rebuilds the HTML, the image errors again).
+  _onImgError = (e) => {
+    const img = e.target
+    if (!(img instanceof HTMLImageElement) || img.classList.contains('mt-img-broken')) return
+    const box = document.createElement('span')
+    box.className = 'mt-img-broken'
+    box.textContent = '⚠ Image not found' + (img.alt ? `: ${img.alt}` : '')
+    box.title = img.getAttribute('src') || ''
+    img.replaceWith(box)
   }
 
   // Before EasyMDE inserts a dropped image, place the cursor at the drop point.
