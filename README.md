@@ -39,8 +39,8 @@ MDTree ships as a single portable executable — no installation, no admin right
 ```sh
 git clone https://github.com/kuimoani/mdtree.git
 cd mdtree
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 The finished executable is written to `src-tauri/target/release/mdtree.exe`. Copy it wherever you like and run it.

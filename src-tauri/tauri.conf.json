@@ -4,8 +4,8 @@
   "version": "0.3.0",
   "identifier": "com.kuimoani.mdtree",
   "build": {
-    "beforeDevCommand": "npm run dev:vite",
-    "beforeBuildCommand": "npm run build:vite",
+    "beforeDevCommand": "pnpm run dev:vite",
+    "beforeBuildCommand": "pnpm run build:vite",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../out/renderer"
   },
