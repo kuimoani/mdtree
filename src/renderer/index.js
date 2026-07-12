@@ -1,4 +1,5 @@
 // Registers all custom elements.
+import './tauri-api.js' // sets up window.api — must run before any component touches it
 import { initSettings } from './components/settings.js'
 import './components/app.js'
 import './components/sidebar.js'

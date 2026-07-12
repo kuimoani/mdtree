@@ -1,49 +1,32 @@
 {
   "name": "mdtree",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lightweight multi-root Markdown note app",
   "type": "module",
-  "main": "out/main/index.js",
   "author": "kuimoani",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
-    "icon": "electron scripts/make-icon.mjs",
-    "package": "electron-vite build && electron-builder --win"
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "dev:vite": "vite",
+    "build:vite": "vite build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.0.0",
     "easymde": "^2.21.0",
     "font-awesome": "^4.7.0",
     "highlight.js": "^10.7.3",
     "lit": "^3.2.0"
   },
   "devDependencies": {
-    "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electron-vite": "^2.3.0",
+    "@tauri-apps/cli": "^2.0.0",
     "vite": "^5.4.0"
   },
   "optionalDependencies": {
     "@esbuild/win32-x64": "0.21.5",
     "@rollup/rollup-win32-x64-msvc": "^4.21.0"
-  },
-  "build": {
-    "appId": "com.kuimoani.mdtree",
-    "productName": "MDTree",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "out/**/*",
-      "build/icon.ico",
-      "package.json"
-    ],
-    "win": {
-      "icon": "build/icon.ico",
-      "target": ["nsis", "zip"]
-    }
   }
 }

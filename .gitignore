@@ -4,3 +4,7 @@ dist/
 release/
 *.log
 .DS_Store
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/

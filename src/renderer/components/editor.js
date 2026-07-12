@@ -207,10 +207,10 @@ function resolveHref(href, basePath) {
 }
 
 // Turn a local image href (relative, absolute, or file://) into a URL the
-// renderer is allowed to load: our privileged `mdfile://` scheme (registered in
-// main). Remote (http/https/data) URLs are returned untouched.
+// webview is allowed to load, via Tauri's asset protocol (window.mdtreeConvertFileSrc,
+// set up in tauri-api.js). Remote (http/https/data) URLs are returned untouched.
 function toImageUrl(href, basePath) {
-  if (/^(https?|data|mdfile):/i.test(href)) return href
+  if (/^(https?|data|asset):/i.test(href)) return href
   let abs
   if (/^file:\/\//i.test(href)) abs = href.replace(/^file:\/\/\/?/i, '')
   else if (/^[a-zA-Z]:[\\/]/.test(href) || href.startsWith('/') || href.startsWith('\\')) abs = href
@@ -218,10 +218,7 @@ function toImageUrl(href, basePath) {
     if (!basePath) return href
     abs = basePath.replace(/[\\/][^\\/]*$/, '') + '/' + href
   }
-  abs = abs.replace(/\\/g, '/').replace(/^\/+/, '')
-  // Fixed "local" host keeps the drive letter (e.g. D:) in the path rather than
-  // being parsed as the URL authority.
-  return 'mdfile://local/' + encodeURI(abs)
+  return window.mdtreeConvertFileSrc(abs.replace(/\\/g, '/').replace(/^\/+/, ''))
 }
 
 // Relative path from one absolute dir to an absolute target (both may use \ or /).
@@ -402,8 +399,6 @@ export class MdEditor extends LitElement {
           title: 'Markdown guide',
           action: () => window.api.openExternal('https://www.markdownguide.org/basic-syntax/'),
         },
-        '|',
-        'undo', 'redo',
       ],
     })
 
@@ -425,10 +420,6 @@ export class MdEditor extends LitElement {
     // Open links from the rendered preview: external URLs in the browser,
     // local .md files as new tabs.
     host.addEventListener('click', this._onContentClick, true)
-    // Move the cursor to the drop location before EasyMDE inserts the image, so
-    // dropped images land where the user dropped them (not at the top). Capture
-    // phase runs before EasyMDE's own (bubble-phase) drop handler.
-    host.addEventListener('drop', this._onEditorDrop, true)
     // Replace preview images that fail to load with a visible placeholder.
     // `error` doesn't bubble, but capture-phase reaches it from the host.
     host.addEventListener('error', this._onImgError, true)
@@ -592,38 +583,36 @@ export class MdEditor extends LitElement {
     img.replaceWith(box)
   }
 
-  // Before EasyMDE inserts a dropped image, place the cursor at the drop point.
-  _onEditorDrop = (e) => {
-    if (!this._mde || !e.dataTransfer?.files?.length) return
+  // Files dragged in from Explorer are handled by app.js (Tauri's OS-level
+  // drag-drop event, which carries real filesystem paths) — see
+  // insertImageAtPoint below. This function only ever runs for clipboard pastes.
+
+  // Insert a reference to an image file already on disk at the given viewport
+  // point. Called by app.js when a Tauri drag-drop event lands on this editor.
+  insertImageAtPoint(absPath, clientX, clientY) {
+    if (!this._mde) return
     const cm = this._mde.codemirror
     try {
-      cm.setCursor(cm.coordsChar({ left: e.clientX, top: e.clientY }, 'window'))
+      cm.setCursor(cm.coordsChar({ left: clientX, top: clientY }, 'window'))
     } catch {
       /* coords outside the editor — leave the cursor where it is */
     }
+    const name = absPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop()
+    cm.replaceSelection(`![${name}](${this._referencePath(absPath)})`)
+    cm.focus()
   }
 
-  // Called by imageUploadFunction for each pasted/dropped image.
-  //  • A dropped file already on disk (Electron sets file.path) → reference it in
-  //    place, no copy.
-  //  • A pasted (in-memory) image → save it next to the document under assets/.
+  // Called by imageUploadFunction for a pasted (in-memory) image — saved next
+  // to the document under assets/.
   async _saveImageFile(file, onSuccess, onError) {
     try {
       const isImage =
-        /^image\//.test(file.type) ||
-        /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(file.name || file.path || '')
+        /^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(file.name || '')
       if (!isImage) {
         onError('Not an image file.')
         return
       }
 
-      // Dropped existing file → reference in place.
-      if (file.path) {
-        onSuccess(this._referencePath(file.path))
-        return
-      }
-
-      // Pasted image → persist under the document's assets/ folder.
       if (!this.path) {
         onError('Cannot add image: the document has no folder yet.')
         return

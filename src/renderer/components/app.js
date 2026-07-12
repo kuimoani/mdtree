@@ -1,5 +1,8 @@
 import { LitElement, html, css } from 'lit'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { confirmDanger } from './ui.js'
+
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i
 
 // Root shell: owns workspace + tab state, persists session, wires child components.
 export class MdApp extends LitElement {
@@ -89,17 +92,25 @@ export class MdApp extends LitElement {
     super.connectedCallback()
     this._restore()
     window.addEventListener('keydown', this._onKey)
-    window.addEventListener('beforeunload', () => this._persist())
-    // Window-level DnD: prevent Electron from navigating to dropped files.
-    window.addEventListener('dragover', this._onDragOver)
-    window.addEventListener('drop', this._onDrop)
+    // OS-level file drag & drop (dragging from Explorer) is intercepted by Tauri
+    // before it reaches the DOM, so it's handled via this event instead of
+    // dragover/drop. In-app drag & drop (sidebar tree reordering) is unaffected
+    // and still uses ordinary HTML5 DnD events.
+    getCurrentWebview()
+      .onDragDropEvent(this._onTauriDragDrop)
+      .then((unlisten) => (this._unlistenDrop = unlisten))
+    // No point flushing on close: every state mutation already persists
+    // immediately below (add/remove workspace, open/close tab, resize, select
+    // tab), so the session on disk is never more than one action stale.
+    // (Tried intercepting onCloseRequested to force a final flush first — the
+    // re-close it triggers left the process hanging after the window
+    // disappeared, so that isn't worth the risk here.)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('keydown', this._onKey)
-    window.removeEventListener('dragover', this._onDragOver)
-    window.removeEventListener('drop', this._onDrop)
+    this._unlistenDrop?.()
   }
 
   _onKey = (e) => {
@@ -109,21 +120,27 @@ export class MdApp extends LitElement {
     }
   }
 
-  // ---- global drag & drop ----
-  _onDragOver = (e) => {
-    e.preventDefault()
-  }
+  // ---- global drag & drop (OS files, via Tauri) ----
+  _onTauriDragDrop = async (event) => {
+    if (event.payload.type !== 'drop') return
+    const { paths, position } = event.payload
+    const scale = window.devicePixelRatio || 1
+    const x = position.x / scale
+    const y = position.y / scale
+    const overEditor = !!document.elementFromPoint(x, y)?.closest('md-editor')
 
-  _onDrop = async (e) => {
-    e.preventDefault()
-    const files = [...(e.dataTransfer?.files || [])]
-    for (const f of files) {
-      if (!f.path) continue
-      const info = await window.api.pathInfo(f.path)
+    for (const path of paths) {
+      if (overEditor) {
+        if (IMAGE_RE.test(path)) {
+          this.renderRoot.querySelector('md-editor')?.insertImageAtPoint(path, x, y)
+        }
+        continue // non-image drops on the editor are ignored
+      }
+      const info = await window.api.pathInfo(path)
       if (info.isDir) {
-        this._addWorkspacePath(f.path)
-      } else if (f.path.toLowerCase().endsWith('.md')) {
-        this._openFile(f.path)
+        this._addWorkspacePath(path)
+      } else if (path.toLowerCase().endsWith('.md')) {
+        this._openFile(path)
       }
     }
   }
@@ -172,7 +189,7 @@ export class MdApp extends LitElement {
 
   _persist() {
     if (!this._restored) return
-    window.api.saveState({
+    return window.api.saveState({
       workspaces: this.workspaces.map((w) => w.path),
       tabs: this.tabs.map((t, i) => ({ path: t.path, active: i === this.activeIndex })),
       sidebarWidth: this.sidebarWidth,
@@ -210,6 +227,7 @@ export class MdApp extends LitElement {
       if (line) this.tabs[existing].gotoLine = line
       this.tabs = [...this.tabs]
       if (activate) this.activeIndex = existing
+      this._persist()
       return
     }
     let content = ''
@@ -229,6 +247,7 @@ export class MdApp extends LitElement {
 
   _selectTab(e) {
     this.activeIndex = e.detail.index
+    this._persist()
   }
 
   async _closeTab(e) {
